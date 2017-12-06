@@ -1,6 +1,6 @@
 import logging
 import os
-import tardis.apps.mytardisdatacert.mytardisdatacert.brukerbiospec
+import brukerbiospec
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def get_meta(input_file_path, **kwargs):
 
     # Initialise "TruDat open format" data and append it to result list
     #
-    namespace = 'http://trudat.uwa.edu.au/schemas/datafile/open-format/1.0'
+    namespace = 'http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/1.0'
     nifMeta = dict()
     nifMeta['.schema'] = namespace
     numDicomDirs = dmd['numDirs'] if 'numDirs' in dmd else 0
@@ -56,8 +56,7 @@ def get_meta(input_file_path, **kwargs):
 
     # Initialise "TruDat DICOM stats" data and append it to result list
     #
-    namespace =
-        'http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0'
+    namespace = 'http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0'
     dcmMeta = dict()
     dcmMeta['.schema'] = namespace
     dcmMeta['numDicomDirs'] = numDicomDirs
@@ -72,7 +71,7 @@ def get_meta(input_file_path, **kwargs):
 
 if __name__ == '__main__':
     import sys
-    import mytardisdatacert.brukerbiospec
+    
     if len(sys.argv) < 2:
         sys.stderr.write('Please specify a .PvDatasets file\n')
         sys.exit(1)

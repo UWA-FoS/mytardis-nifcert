@@ -1,9 +1,9 @@
 from django.conf import settings
-from tardis.apps.mytardisdatacert.mytardisdatacert import metadata, tasks
+import metadata, tasks
 
 class MetadataFilter(object):
-    """MyTardis filter to process uploaded datasets and datafiles, addding
-       metadata indicating their compliance with standards and procdures.
+    """MyTardis filter to process uploaded data sets and data files, adding
+       metadata indicating their compliance with standards and procedures.
     Attributes
     ----------
     name: str
@@ -29,9 +29,7 @@ class MetadataFilter(object):
         instance = kwargs.get('instance')
         q = getattr(settings, 'DATACERT_QUEUE', 'celery')
 
-        tasks.process_meta\
-            .apply_async(args=[metadata.get_meta, instance, self.schema,
-                              False], queue=q)
+        tasks.process_meta.apply_async(args=[metadata.get_meta, instance, self.schema,False], queue=q)
 
 def make_filter(name, schema):
     return MetadataFilter(name, schema)

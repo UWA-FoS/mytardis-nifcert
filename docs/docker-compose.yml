@@ -21,6 +21,7 @@ services:
       - MYTARDIS_BIOFORMATS_FILTER_ENABLE=False
       - MYTARDIS_SITE_TITLE=TruDat@UWA_Dev
       - MYTARDIS_RAPID_CONNECT_ENABLED=False
+      - POSTGRES_PASSWORD=postgres
     links:
       - db
       - rabbitmq
@@ -36,6 +37,7 @@ services:
     environment:
       - CELERY_ENABLE=True
       - MYTARDIS_BIOFORMATS_FILTER_ENABLE=False
+      - POSTGRES_PASSWORD=postgres
     links:
       - db
       - rabbitmq
@@ -48,6 +50,7 @@ services:
     image: postgres:9.5
     environment:
       - POSTGRES_INITDB_ARGS=--data-checksums --locale=en_US.utf8
+      - POSTGRES_PASSWORD=postgres
     volumes:
       - db:/var/lib/postgresql
   rabbitmq:

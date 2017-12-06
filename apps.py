@@ -1,15 +1,17 @@
+# nifcert/apps.py
+# # https://docs.djangoproject.com/en/1.11/ref/applications/
+
 import logging
 from django.apps import AppConfig
 from tardis.tardis_portal.models import Schema
 
 logger = logging.getLogger(__name__)
 
-CHECK_SCHEMA
-    "http://trudat.uwa.edu.au/schemas/dataset/open-format/1.0"
+CHECK_SCHEMA = "http://trudat.cmca.uwa.edu.au/schemas/dataset/open-format/1.0"
 
-class MyTardisDataCertConfig(AppConfig):
-    name = 'mytardisdatacert'
-    verbose_name = "MyTardis Data Certification"
+class NifCertConfig(AppConfig):
+    name = 'nifcert'
+    verbose_name = "MyTardis NIF Certification"
 
     # At startup, ensure any Schemas and associated ParameterNames
     # required for this app's metadata are loaded if they don't
@@ -22,7 +24,7 @@ class MyTardisDataCertConfig(AppConfig):
     #     mytardis/tardis/tardis_portal/models/parameters.py
 
     def ready(self):
-        logger.debug("MyTardisDataCertConfig.ready() called")
+        logger.debug("NifCertConfig.ready() called")
         #
         # TODO: use Django migrations and / or one Schema
         # (ParameterSet) per file instead of calling loaddata() on one
@@ -36,6 +38,6 @@ class MyTardisDataCertConfig(AppConfig):
 
             # Import fixtures/trudat-schemas.json into the database
             #
-            logger.debug("    loading TruDat schemas...")
-            call_command('loaddata', 'trudat-schemas.json')
-logger.debug("    loaded TruDat schemas")
+            logger.debug("    loading NIFCert schemas...")
+            call_command('loaddata', 'nifcert-schemas.json')
+            logger.debug("    loaded NIFCert schemas")

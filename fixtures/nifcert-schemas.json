@@ -4,7 +4,7 @@
         "model": "tardis_portal.schema",
         "fields": {
             "name": "TruDat open format",
-            "namespace": "http://trudat.uwa.edu.au/schemas/dataset/open-format/1.0",
+            "namespace": "http://trudat.cmca.uwa.edu.au/schemas/dataset/open-format/1.0",
             "subtype": "",
             "hidden": false,
             "type": 2,
@@ -25,7 +25,7 @@
             "order": 9999,
             "immutable": true,
             "schema": [
-                "http://trudat.uwa.edu.au/schemas/dataset/open-format/1.0"
+                "http://trudat.cmca.uwa.edu.au/schemas/dataset/open-format/1.0"
             ]
         }
     },
@@ -34,7 +34,7 @@
         "model": "tardis_portal.schema",
         "fields": {
             "name": "TruDat open format",
-            "namespace": "http://trudat.uwa.edu.au/schemas/datafile/open-format/1.0",
+            "namespace": "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/1.0",
             "subtype": "",
             "hidden": false,
             "type": 3,
@@ -55,7 +55,7 @@
             "order": 9999,
             "immutable": true,
             "schema": [
-                "http://trudat.uwa.edu.au/schemas/datafile/open-format/1.0"
+                "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/1.0"
             ]
         }
     },
@@ -64,7 +64,7 @@
         "model": "tardis_portal.schema",
         "fields": {
             "name": "TruDat DICOM stats",
-            "namespace": "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0",
+            "namespace": "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0",
             "subtype": "",
             "hidden": false,
             "type": 3,
@@ -85,7 +85,7 @@
             "order": 9999,
             "immutable": true,
             "schema": [
-                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+                "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
             ]
         }
     },
@@ -103,7 +103,7 @@
             "order": 9999,
             "immutable": true,
             "schema": [
-                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+                "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
             ]
         }
     },
@@ -121,7 +121,7 @@
             "order": 9999,
             "immutable": true,
             "schema": [
-                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+                "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
             ]
         }
     },
@@ -139,7 +139,7 @@
             "order": 9999,
             "immutable": true,
             "schema": [
-                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+                "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
             ]
         }
     }

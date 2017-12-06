@@ -98,8 +98,7 @@ def save_parameters(schema, param_set, params):
             savep(paramk, paramv)
 
 
-@task(name="mytardisdatacert.process_meta",
-      ignore_result=True)
+@task(name="nifcert.process_meta",ignore_result=True)
 def process_meta(func, df, schema_name, overwrite=False, **kwargs):
     """Extract metadata from a Datafile using a provided function and save the
     outputs as DatafileParameters.
