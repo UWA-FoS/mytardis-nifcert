@@ -19,8 +19,8 @@ Directory structure:
 ```
 - Dev/
  |- src/
- | |- nifcert/         ; git clone https://github.com/UWA-FoS/mytardis-nifcert nifcert
- |- docker-compose.yml ; ln ./src/nifcert/docs/docker-compose.yml
+ | |- nifcert/         ; git clone https://github.com/UWA-FoS/mytardis-nifcert src/nifcert
+ |- docker-compose.yml ; ln -s ./src/nifcert/docs/docker-compose.yml
 ```
 Basic work example:
 
