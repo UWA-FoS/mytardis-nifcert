@@ -1,0 +1,146 @@
+[
+    {
+        "pk": null,
+        "model": "tardis_portal.schema",
+        "fields": {
+            "name": "TruDat open format",
+            "namespace": "http://trudat.uwa.edu.au/schemas/dataset/open-format/1.0",
+            "subtype": "",
+            "hidden": false,
+            "type": 2,
+            "immutable": true
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "NIF_certified",
+            "data_type": 2,
+            "is_searchable": true,
+            "choices": "",
+            "comparison_type": 1,
+            "full_name": "NIF Certified",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.uwa.edu.au/schemas/dataset/open-format/1.0"
+            ]
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.schema",
+        "fields": {
+            "name": "TruDat open format",
+            "namespace": "http://trudat.uwa.edu.au/schemas/datafile/open-format/1.0",
+            "subtype": "",
+            "hidden": false,
+            "type": 3,
+            "immutable": true
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "NIF_certified",
+            "data_type": 2,
+            "is_searchable": true,
+            "choices": "",
+            "comparison_type": 1,
+            "full_name": "NIF Certified",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.uwa.edu.au/schemas/datafile/open-format/1.0"
+            ]
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.schema",
+        "fields": {
+            "name": "TruDat DICOM stats",
+            "namespace": "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0",
+            "subtype": "",
+            "hidden": false,
+            "type": 3,
+            "immutable": true
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "numDicomDirs",
+            "data_type": 1,
+            "is_searchable": true,
+            "choices": "",
+            "comparison_type": 1,
+            "full_name": "Number of DICOM Directories",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+            ]
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "numDicomFiles",
+            "data_type": 1,
+            "is_searchable": true,
+            "choices": "",
+            "comparison_type": 1,
+            "full_name": "Number of DICOM Files",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+            ]
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "numDicomBytes",
+            "data_type": 1,
+            "is_searchable": true,
+            "choices": "",
+            "comparison_type": 1,
+            "full_name": "Total Bytes of DICOM Data",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+            ]
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "dicomDirsMetadata",
+            "data_type": 8,
+            "is_searchable": true,
+            "choices": "",
+            "comparison_type": 1,
+            "full_name": "DICOM directories metadata",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0"
+            ]
+        }
+    }
+]
