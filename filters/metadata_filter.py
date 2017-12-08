@@ -1,5 +1,5 @@
 from django.conf import settings
-import metadata, tasks
+from nifcert import metadata, tasks
 
 class MetadataFilter(object):
     """MyTardis filter to process uploaded data sets and data files, adding
