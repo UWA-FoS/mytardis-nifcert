@@ -30,7 +30,7 @@ services:
       - static:/usr/src/app/static
       - store:/usr/src/app/var/store
       - ./src/nifcert/:/usr/src/app/nifcert/
-      - ./src/nifcert/settings.d/nifcert.py:/usr/src/app/settings.d/nifcert.py
+      - ./src/nifcert/docs/settings.d/nifcert.py:/usr/src/app/settings.d/nifcert.py
   celery:
     image: uwaedu/mytardis_django
     command: --loglevel=INFO --autoreload
@@ -45,7 +45,7 @@ services:
       - staging:/usr/src/app/var/staging
       - store:/usr/src/app/var/store
       - ./src/nifcert/:/usr/src/app/nifcert/
-      - ./src/nifcert/settings.d/nifcert.py:/usr/src/app/settings.d/nifcert.py
+      - ./src/nifcert/docs/settings.d/nifcert.py:/usr/src/app/settings.d/nifcert.py
   db:
     image: postgres:9.5
     environment:

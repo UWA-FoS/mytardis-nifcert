@@ -1,6 +1,16 @@
 # mytardis-nifcert
 Verify NIF certified data; MyTardis, Celery task, Django application
 
+# Issues and workarounds
+
+* There is currently a dependency on database schema that throws an unhandled exception.
+  * Workaround: Start the initial container build with the following alterations to the docker-compose.yml file
+    * Comment out ```- ./src/nifcert/docs/settings.d/nifcert.py:/usr/src/app/settings.d/nifcert.py```
+    * Set ```- MYTARDIS_BIOFORMATS_ENABLE=False```
+    Once the development platform has completed deployment revert the above settings and run ```docker-compose up -d```.
+* The docker-mytardis image has some generic middleware settings incorrectly bundled with the bioformats settings. This has been fixed in upstream code but is not yet present in the Docker images.
+  * Workaround: Set ```- MYTARDIS_BIOFORMATS_ENABLE=True```
+
 # Development and contributions
 
 To use the latest production MyTardis Docker image to base the code against perform the following:
