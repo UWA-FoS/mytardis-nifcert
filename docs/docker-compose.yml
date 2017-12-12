@@ -52,6 +52,6 @@ services:
       - POSTGRES_INITDB_ARGS=--data-checksums --locale=en_US.utf8
       - POSTGRES_PASSWORD=postgres
     volumes:
-      - db:/var/lib/postgresql
+      - db:/var/lib/postgresql/data
   rabbitmq:
     image: rabbitmq:3
