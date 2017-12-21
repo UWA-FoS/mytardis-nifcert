@@ -1,39 +1,56 @@
 import os
-from zipmeta.matchlist import getMatchingZippedFilesMetadata
 
-# Build a dictionary containing metadata about DICOM files in a
-# .PvDatasets file from a Bruker BioSpec MRI scanner and
-#
-# The zipFileName argument should be a PvDatasets file, but does noot
-# need to have the usual file extension.
-#
-# Return a tuple containing:
-#
-# [0]: a dictionary containing metadata about DICOM files in a zip file.
-# [1]: An error message string if an error occurs, or None otherwise.
-#
-# The dictionary contains:
-#
-# ['numFiles']
-#     The total number of DICOM files found in all directories.
-#
-# ['numBytes']
-#     The total size in bytes of all DICOM files found in all directories.
-#
-# ['numDirs']
-#     The total number of directories containing one or more DICOM
-#     files (non-recursive).
-#
-# ['dirs']
-#     A dictionary with one item for each directory that directly contains
-#     one or more child DICOM files (non-recursive).  The key is the
-#     directory path.  The value is a dictionary with two keys:
-#     'numFiles' and 'numBytes'.  The values are the number of DICOM
-#     files and the total size of the DICOM files within the directory
-#     (non-recursive).
+from nifcert.zipmeta.matchlist import get_zip_metadata_matches
+from nifcert import trudat
 
-def findDicomFiles(zipFileName):
-    zipMeta = getMatchingZippedFilesMetadata(zipFileName, ['[^/]\.dcm$'])
+def find_dicom_files(pvds_file_name):
+    """
+    Build a dictionary containing metadata about DICOM files in a
+    .PvDatasets file from a Bruker BioSpec 9.4T MRI scanner and
+
+    Parameters
+    ----------
+    pvds_file_name: string
+        Should be a .PvDatasets file, but does not need to have the
+        usual file extension.
+
+    Returns
+    -------
+    A tuple containing:
+
+    [0]: a dictionary containing metadata about DICOM files in a zip file.
+    [1]: An error message string if an error occurs, or None otherwise.
+
+    The dictionary contains the following keys (all strings) and values:
+
+    trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY
+        The total number of DICOM files found in all directories.
+
+    trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY
+        The total size in bytes of all DICOM files found in all
+        directories.
+
+    trudat.DICOM_STATS_DATAFILE_NUM_DIRS_KEY
+        The total number of directories containing one or more DICOM
+        files (non-recursive).
+
+    trudat.DICOM_STATS_DATAFILE_DIRS
+        A dictionary with one item for each directory that directly
+        contains one or more child DICOM files (non-recursive).
+        The key is the directory path.  The value is a dictionary with
+        two key/value items:
+            trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY
+                the number of DICOM files and the total size of the
+                DICOM files within the directory (non-recursive).
+            trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY
+                the total size of the DICOM files within the directory
+                (non-recursive).
+        Only directories with DICOM files immediately within them appear
+        as keys.  Their parent directories' paths must be inferred if a
+        full directory hierarchy needs to be constructed.
+    """
+
+    zipMeta = get_zip_metadata_matches(pvds_file_name, ['[^/]\.dcm$'])
     if zipMeta[1] != None:
         return ({}, zipMeta[1])
 
@@ -41,8 +58,6 @@ def findDicomFiles(zipFileName):
     dicomDirCount = 0
     dicomBytesCount = 0
     dicomDirs = {}      # key: dir name, value: (fileCount, byteCount)
-    numFilesKey = 'numFiles'
-    numBytesKey = 'numBytes'
     for meta in zipMeta[0]:
         # sys.stdout.write('{0:8} {1}\n'.format(meta[1], meta[0]))
         dicomFileCount += 1
@@ -63,13 +78,13 @@ def findDicomFiles(zipFileName):
         # sys.stdout.write('{0:3} files  {1:8} bytes  {2}\n'
         #                  .format(dirMeta[0], dirMeta[1], dirName))
         resultDirs[dirName] = {
-            numFilesKey: dirMeta[0],
-            numBytesKey: dirMeta[1]
+            trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY: dirMeta[0],
+            trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY: dirMeta[1]
         }
     result = {
-        numFilesKey: dicomFileCount,
-        numBytesKey: dicomBytesCount,
-        'numDirs': dicomDirCount,
-        'dirs': resultDirs
+        trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY: dicomFileCount,
+        trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY: dicomBytesCount,
+        trudat.DICOM_STATS_DATAFILE_NUM_DIRS_KEY: dicomDirCount,
+        trudat.DICOM_STATS_DATAFILE_DIRS_KEY: resultDirs
     }
     return (result, None)

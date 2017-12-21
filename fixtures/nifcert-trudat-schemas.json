@@ -3,7 +3,7 @@
         "pk": null,
         "model": "tardis_portal.schema",
         "fields": {
-            "name": "TruDat open format",
+            "name": "TruDat NIF dataset",
             "namespace": "http://trudat.cmca.uwa.edu.au/schemas/dataset/open-format/1.0",
             "subtype": "",
             "hidden": false,
@@ -33,7 +33,7 @@
         "pk": null,
         "model": "tardis_portal.schema",
         "fields": {
-            "name": "TruDat open format",
+            "name": "TruDat NIF datafile",
             "namespace": "http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/1.0",
             "subtype": "",
             "hidden": false,

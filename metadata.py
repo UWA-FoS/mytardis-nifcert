@@ -1,115 +1,105 @@
 import logging
-import os
-import brukerbiospec
+from nifcert.brukerbiospec.metadata.dicom import find_dicom_files
+from nifcert.brukerbiospec.files import is_bruker_biospec_file_path
+from nifcert import trudat
 
 logger = logging.getLogger(__name__)
 
-def get_meta(input_file_path, **kwargs):
-    """ Extract specific metadata typically used in bio-image analysis. Also
-    outputs a preview image to the output directory.
+
+def get_non_nifcert_metadata():
+    """Return a a dict containing NIFCert and DICOM stats metadata
+    suitable for marking a Datafile as not NIFCert.
+    """
+    return { 
+        trudat.NIFCERT_DATAFILE_NAMESPACE: {
+            trudat.NIFCERT_DATAFILE_CERTIFIED_KEY:
+            trudat.NIFCERT_NOT_CERTIFIED_VALUE
+        },
+        trudat.DICOM_STATS_DATAFILE_NAMESPACE: {
+            trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY: 0,
+            trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY: 0,
+            trudat.DICOM_STATS_DATAFILE_NUM_DIRS_KEY: 0,
+            trudat.DICOM_STATS_DATAFILE_DIRS_KEY: {}
+        }
+    }
+
+
+def scan_datafile_for_metadata(file_path, **kwargs):
+    """Scan an instrument-specific input file to produce metadata
+    that can be added to the file's DataFile and Dataset objects
+    by one or more subsequent processing stages.
+
+    At present only Bruker BioSpec data files ending with a
+    ".PvDatasets" file extension are scanned for metadata.
+
     Parameters
     ----------
-    input_file_path: str
-        Input file path
+    file_path: str
+        Path of input file to be scanned.
     Returns
     -------
-    meta: dict
-        A dictionary with key/value pairs corresponding to the
-        .PvDatasets metadata to be written to the parameter set for this
-        DataSet type.
-        
+    dict:
+        A dictionary of dictionaries.  Each key in the outermost
+        dictionary is a tardis_portal.Schema.namespace string
+        (URI key), which identifies a unique DataFile ParameterSet
+        (a DataFile may have multiple ParameterSets).   The
+        corresponding value is a dictionary containing the parameter
+        names (key) and values (value) to use in the ParameterSet.
+
+        Returns an empty dictionary if file_path is valid but an
+        error occurs while reading the file, or the file is empty.
+
+    None:
+        If file_path doesn't look like a Bruker BioSpec file name
+        (typically has a ".PvDatasets" file extension).
     """
 
-    logger.debug('scanning for metadata: "{}"'.format(input_file_path))
+    logger.debug('nifcert.scan_datafile_for_metadata checking new '
+                 'Datafile="%s"', file_path)
 
-    base, ext = os.path.splitext(os.path.basename(input_file_path))
-    if ext.lower() != '.pvdatasets':
-        logger.debug('unsupported file extension: "{}"'.format(ext))
-        return
+    if not is_bruker_biospec_file_path(file_path):
+        logger.debug('nifcert.scan_datafile_for_metadata ignoring '
+                     'Datafile="%s"', file_path)
+        return None
+    dm = None
+    try:
+        dm = find_dicom_files(file_path)
+        if (dm[1] != None):     # error message
+            logger.error("nifcert.scan_datafile_for_metadata "
+                         "find_dicom_files('%s') => '%s'", file_path, dm[1])
+    except Exception, e:
+        logger.error("nifcert.scan_datafile_for_metadata "
+                     "find_dicom_files('%s') EXCEPTION = '%s'", file_path, e)
+        raise                   # propagate any exceptions (Celery locking)
 
-    dm = brukerbiospec.metadata.dicom.findDicomFiles(input_file_path)
-    if (dm[1] != None):
-        logger.error('brukerbiospec.meta.dicom.findDicomFiles({}) {}\n'
-                     .format(input_file_path, dm[1]))
-        return []
+    if dm is None or dm[1] != None:
+        return get_non_nifcert_metadata()
 
+    result = dict()
+
+    # Abbrev. global namespace ids (suffix: D=DICOM, N=NIFCERT, K=KEY, V=VALUE)
+    NUM_DIRS_DK =  trudat.DICOM_STATS_DATAFILE_NUM_DIRS_KEY
+    NUM_FILES_DK = trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY
+    NUM_BYTES_DK = trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY
+
+    # Append TruDat DICOM statistics data to result list.
     dmd = dm[0]                 # get the dict containing DICOM metadata
-    if 'numDirs' in dmd and 'numFiles' in dmd and 'numBytes' in dmd:
-        logger.debug('{0:4} dirs   {1:6} files   {2:12} bytes\n'
-                     .format(dmd['numDirs'], dmd['numFiles'], dmd['numBytes']))
+    if (NUM_DIRS_DK in dmd and NUM_FILES_DK and NUM_BYTES_DK in dmd):
+        logger.debug(
+            '{0:4} dirs   {1:6} files   {2:12} bytes\n'
+            .format(dmd[NUM_DIRS_DK], dmd[NUM_FILES_DK], dmd[NUM_BYTES_DK]))
+    result[trudat.DICOM_STATS_DATAFILE_NAMESPACE] = dmd
 
-    # Prepare a list of dictionaries containing TruDat metadata to insert
-    # into the database.
-    #
-    # Avoid exceptions - may impact on Celery/Database? (TODO: check docs)
+    # Abbrev. global namespace ids (suffix: D=DICOM, N=NIFCERT, K=KEY, V=VALUE)
+    FILE_CERT_NK = trudat.NIFCERT_DATAFILE_CERTIFIED_KEY
+    IS_CERT_NV =   trudat.NIFCERT_IS_CERTIFIED_VALUE
+    NOT_CERT_NV =  trudat.NIFCERT_NOT_CERTIFIED_VALUE
 
-    result = list()
+    # Append TruDat NIFCert Datafile schema data to result list.
+    nif_meta = dict()
+    num_dicom_dirs = dmd[NUM_DIRS_DK] if NUM_DIRS_DK in dmd else 0
+    nif_meta[FILE_CERT_NK] = NOT_CERT_NV if num_dicom_dirs == 0 else IS_CERT_NV
+    result[trudat.NIFCERT_DATAFILE_NAMESPACE] = nif_meta
 
-    # Initialise "TruDat open format" data and append it to result list
-    #
-    namespace = 'http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/1.0'
-    nifMeta = dict()
-    nifMeta['.schema'] = namespace
-    numDicomDirs = dmd['numDirs'] if 'numDirs' in dmd else 0
-    nifMeta['NIF_certified'] = 'no' if numDicomDirs == 0 else 'yes'
-    result.append(nifMeta)
-
-    # Initialise "TruDat DICOM stats" data and append it to result list
-    #
-    namespace = 'http://trudat.cmca.uwa.edu.au/schemas/datafile/open-format/dicom-stats/1.0'
-    dcmMeta = dict()
-    dcmMeta['.schema'] = namespace
-    dcmMeta['numDicomDirs'] = numDicomDirs
-    if 'numFiles' in dmd:
-        dcmMeta['numDicomFiles'] = dmd['numFiles']
-    if 'numBytes' in dmd:
-        dcmMeta['numDicomBytes'] = dmd['numBytes']
-    result.append(dcmMeta)
-
+    logger.debug("nifcert.scan_datafile_for_metadata result='%s'", result)
     return result
-
-
-if __name__ == '__main__':
-    import sys
-    
-    if len(sys.argv) < 2:
-        sys.stderr.write('Please specify a .PvDatasets file\n')
-        sys.exit(1)
-    m = get_meta(sys.argv[1])
-    if len(m) == 0:
-        sys.exit(1)
-    for d in m:
-        print d
-        # print('{0:4} dirs  {1:6} files  {2:12} bytes\n'
-        #       .format(m['numDicomDirs'], m['numDicomFiles'], m['numDicomBytes']))
-        
-
-    # TODO: replace code below with Python ZIP scanner
-
-    # for i, img_meta in enumerate(meta_xml.findall('ome:Image', ome_ns)):
-    #     smeta = dict()
-    #     output_file_path = os.path.join(output_path,
-    #                                     input_fname+"_s%s.png" % i)
-    #     logger.debug("Generating series %s preview from image: %s"
-    #                  % (i, input_fname+ext))
-    #     img = previewimage.get_preview_image(input_file_path, omexml, series=i)
-    #     logger.debug("Saving series %s preview from image: %s"
-    #                  % (i, input_fname+ext))
-    #     previewimage.save_image(img, output_file_path, overwrite=True)
-    #     logger.debug("Extracting metadata for series %s preview from image: %s"
-    #                  % (i, input_fname+ext))
-    #     smeta['id'] = img_meta.attrib['ID']
-    #     smeta['name'] = img_meta.attrib['Name']
-    #     smeta['previewImage'] = output_file_path
-    #     for pix_meta in img_meta.findall('ome:Pixels', ome_ns):
-    #         for k, v in pix_meta.attrib.iteritems():
-    #             if k.lower() not in pix_exc:
-    #                 smeta[k.lower()] = v
-
-    #         for c, channel_meta in enumerate(pix_meta.findall('ome:Channel', ome_ns)):
-    #             for kc, vc in channel_meta.attrib.iteritems():
-    #                 if kc.lower() not in channel_exc:
-    #                     if kc.lower() not in smeta:
-    #                         smeta[kc.lower()] = ["Channel %s: %s" % (c, vc)]
-    #                     else:
-    #                         smeta[kc.lower()].append("Channel %s: %s" % (c, vc))
