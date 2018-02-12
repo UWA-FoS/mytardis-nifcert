@@ -38,3 +38,7 @@ This example starts the django shell within the django Docker container, loads t
 docker-compose logs celery
 docker-compose logs django
 ```
+
+# References:
+
+[Docker MyTardis source](https://github.com/UWA-FoS/docker-mytardis)
