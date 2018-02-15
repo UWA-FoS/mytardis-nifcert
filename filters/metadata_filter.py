@@ -3,19 +3,14 @@ from django.conf import settings
 from nifcert import metadata
 from nifcert import tasks
 
-class MetadataFilter(object):
-    """MyTardis filter to process uploaded data sets and data files, adding
-       metadata indicating their compliance with standards and procedures.
-    Attributes
-    ----------
-    name: str
-        Short name for schema
-    schema: str
-        Name of the schema to load the metadata into.
+class DataFileMetadataFilter(object):
+    """MyTardis filter to process each uploaded DataFile, adding any
+    TruDat metadata required to indicate its compliance with standards
+    and procedures.  May also update the metadata for the DataFile's
+    Dataset.
     """
-    def __init__(self, name, schema):
-        self.name = name
-        self.schema = schema
+
+    def __init__(self):
         self.logger = logging.getLogger(__name__)
 
 
@@ -40,7 +35,7 @@ class MetadataFilter(object):
             queue=q)
         self.logger.debug("nifcert post-save metadata_filter callback end")
 
-def make_filter(name, schema):
-    return MetadataFilter(name, schema)
+def make_filter():
+    return DataFileMetadataFilter()
 
-make_filter.__doc__ = MetadataFilter.__doc__
+make_filter.__doc__ = DataFileMetadataFilter.__doc__
