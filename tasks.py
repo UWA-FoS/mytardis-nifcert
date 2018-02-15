@@ -1,3 +1,4 @@
+"Celery tasks and related functions for setting Datafile and Dataset metadata"
 import logging
 from django.core.cache import caches
 from django.db import transaction
@@ -11,7 +12,6 @@ from tardis.tardis_portal.models import DatafileParameterSet
 from tardis.tardis_portal.models import DatafileParameter
 
 from nifcert import trudat
-from tardis.tardis_portal.models import Schema as TardisSchema
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ def get_dataset_metadata(dataset_id):
     """
 
     # TODO: use QuerySet anotate & aggregate to condense work into one query?
-    # 
+    #
     # .annotate(num_yes=
     #           Count(string_value__exact=trudat.NIFCERT_IS_CERTIFIED_VALUE,
     #                 distinct=True),
@@ -343,7 +343,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
         return 0
 
     # Validate namespace keys in metadata
-    schema_namespaces = trudat.NAMESPACE_TREE[TardisSchema.DATAFILE].keys()
+    schema_namespaces = trudat.NAMESPACE_TREE[Schema.DATAFILE].keys()
     if set(metadata.keys()) != set(schema_namespaces):
         logger.error("nifcert.set_datafile_metadata Datafile[%d] "
                      "expected %d Schemas, found %d in metadata dictionary",
@@ -429,7 +429,7 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
         return 0
 
     # Validate namespace keys in metadata
-    schema_namespaces = trudat.NAMESPACE_TREE[TardisSchema.DATASET].keys()
+    schema_namespaces = trudat.NAMESPACE_TREE[Schema.DATASET].keys()
     if set(metadata.keys()) != set(schema_namespaces):
         logger.error("nifcert.set_dataset_metadata Dataset[%d] "
                      "expected %d Schemas, found %d in metadata dictionary",
@@ -561,7 +561,7 @@ def process_meta(get_metadata_func, df,
             with transaction.atomic():
                 meta = get_datafile_metadata(df, get_metadata_func, kwargs)
                 if meta != None and len(meta) == 0:
-                    # Recognised file type, but bad contents.  Mark as invalid. 
+                    # Recognised file type, but bad contents.  Mark as invalid.
                     meta = metadata.get_non_nifcert_metadata()
                 if meta:
                     set_datafile_metadata(df, meta, replace_file_metadata)
