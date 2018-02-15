@@ -569,10 +569,8 @@ def process_meta(get_metadata_func, datafile_id,
                      "couldn't fetch DataFile[%d]", num_datafiles, datafile_id)
 
     meta = None
-    held_datafile_lock = False
     logger.debug("nifcert.process_meta locking DataFile[%d]", datafile_id)
     if acquire_datafile_lock(datafile_id):
-        held_datafile_lock = True
         logger.debug("nifcert.process_meta locked DataFile[%d]", datafile_id)
 
         try:
@@ -594,11 +592,11 @@ def process_meta(get_metadata_func, datafile_id,
             raise
         finally:
             release_datafile_lock(datafile_id)
-
-    if not held_datafile_lock:
+    else:
         logger.debug("nifcert.process_meta didn't acquire DataFile[%d] lock, "
                      "skipping Dataset update", datafile_id)
         return
+
     if meta == None:
         logger.debug("nifcert.process_meta no metadata to save for "
                      "DataFile[%d]", datafile_id)
