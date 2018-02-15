@@ -125,18 +125,8 @@ def save_datafile_parameters(schema_id, param_set, params):
     -------
     None
     """
-    def save_df_param(paramk, paramv):
-        """Save a value (or list of values) as a DatafileParameter
-        Parameters
-        ----------
-        paramk: string for ParameterName
-            name of the DatafileParameter to be saved
-        paramv: any valid DatafileParameter (Parameter) value type
-            value for the DatafileParameter to be saved
-        Returns
-        -------
-        None
-        """
+
+    for paramk, paramv in params.iteritems():
         param_name = ParameterName.objects.get(schema__id=schema_id,
                                                name=paramk)
         dfp = DatafileParameter(parameterset=param_set, name=param_name)
@@ -146,12 +136,6 @@ def save_datafile_parameters(schema_id, param_set, params):
             else:
                 dfp.string_value = paramv
             dfp.save()
-
-    for paramk, paramv in params.iteritems():
-        if isinstance(paramv, list):
-            [save_df_param(paramk, v) for v in paramv]
-        else:
-            save_df_param(paramk, paramv)
 
 
 def save_dataset_parameters(schema_id, param_set, params):
@@ -173,18 +157,7 @@ def save_dataset_parameters(schema_id, param_set, params):
     None
     """
 
-    def save_ds_param(paramk, paramv):
-        """Save a value (or list of values) as a DatafileParameter
-        Parameters
-        ----------
-        paramk: string for ParameterName
-            name of the DatafileParameter to be saved
-        paramv: any valid DatafileParameter (Parameter) value type
-            value for the DatafileParameter to be saved
-        Returns
-        -------
-        None
-        """
+    for paramk, paramv in params.iteritems():
         param_name = ParameterName.objects.get(schema__id=schema_id,
                                                name=paramk)
         dfp = DatasetParameter(parameterset=param_set, name=param_name)
@@ -194,12 +167,6 @@ def save_dataset_parameters(schema_id, param_set, params):
             else:
                 dfp.string_value = paramv
             dfp.save()
-
-    for paramk, paramv in params.iteritems():
-        if isinstance(paramv, list):
-            [save_ds_param(paramk, v) for v in paramv]
-        else:
-            save_ds_param(paramk, paramv)
 
 
 def get_datafile_metadata(df, get_metadata_func, kwargs):
