@@ -8,6 +8,7 @@ from tardis.tardis_portal.models import ParameterName
 from tardis.tardis_portal.models import Dataset
 from tardis.tardis_portal.models import DatasetParameterSet
 from tardis.tardis_portal.models import DatasetParameter
+from tardis.tardis_portal.models import DataFile
 from tardis.tardis_portal.models import DatafileParameterSet
 from tardis.tardis_portal.models import DatafileParameter
 
@@ -91,7 +92,7 @@ def acquire_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
 
 
 def release_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """Release the lock on a Datafile from acquire_datafile_lock().
+    """Release the lock on a DataFile from acquire_datafile_lock().
 
     Parameters
     ----------
@@ -202,12 +203,12 @@ def save_dataset_parameters(schema_id, param_set, params):
 
 
 def get_datafile_metadata(df, get_metadata_func, kwargs):
-    """Extract metadata for a Datafile using a function provided
+    """Extract metadata for a DataFile using a function provided
 
     Parameters
     ----------
-    df : tardis.tardis_portal.models.Datafile
-        The Datafile instance to process.
+    df : tardis.tardis_portal.models.DataFile
+        The DataFile instance to process.
     get_metadata_func: Function
         A function that accepts a file path argument, keyword args and
         returns a dict with Schema namespaces as keys and dicts as
@@ -225,11 +226,11 @@ def get_datafile_metadata(df, get_metadata_func, kwargs):
     dfo = df.get_preferred_dfo()
     if dfo:
         df_path = dfo.get_full_path()
-        logger.debug("nifcert.get_datafile_metadata scanning Datafile[%d]='%s'",
+        logger.debug("nifcert.get_datafile_metadata scanning DataFile[%d]='%s'",
                      df.id, df_path)
         # Call the function supplied as an argument to get metadata
         meta = get_metadata_func(df_path, **kwargs)
-        logger.debug("nifcert.get_datafile_metadata scanned  Datafile[%d]='%s'",
+        logger.debug("nifcert.get_datafile_metadata scanned  DataFile[%d]='%s'",
                      df.id, df_path)
     return meta
 
@@ -238,7 +239,7 @@ def get_dataset_metadata(dataset_id):
     """Scan the NIF_certified status of all Datafiles in a Dataset and
     return the NIF_Certified metadata for the Dataset as a whole.
 
-    Any Datafile in a Dataset with NIF_certified=no makes the Dataset
+    Any DataFile in a Dataset with NIF_certified=no makes the Dataset
     NIF_certified=no; otherwise one or more Datafiles with
     NIF_certified=yes makes the Dataset NIF_certified=yes; otherwise
     the Dataset has no NIF_certified metadata.
@@ -280,7 +281,7 @@ def get_dataset_metadata(dataset_id):
         elif p.string_value == trudat.NIFCERT_NOT_CERTIFIED_VALUE:
             num_files_not_certified += 1
         logger.debug("nifcert.process_meta     param match[%d] : "
-                     "Datafile[%d,%3d] '%s'='%s'",
+                     "DataFile[%d,%3d] '%s'='%s'",
                      i, p.parameterset.datafile.dataset.id,
                      p.parameterset.datafile.id, p.name, p.string_value)
         i += 1
@@ -307,7 +308,7 @@ def get_dataset_metadata(dataset_id):
 
 
 def set_datafile_metadata(datafile, metadata, replace_metadata):
-    """Set the nifcert metadata for a Datafile.
+    """Set the nifcert metadata for a DataFile.
 
     This app is solely responsible for managing metadata associated
     with its schema namespaces.  Rather than attempting to check,
@@ -316,8 +317,8 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
 
     Parameters
     ----------
-    datafile: Datafile
-        The Datafile having its metadata updated.
+    datafile: DataFile
+        The DataFile having its metadata updated.
 
     metadata: dict
         A dictionary of dictionaries containing the new metadata.
@@ -328,7 +329,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
     replace_metadata: bool
         If replace_metadata is True, and any full, partial or empty
         NIFCert of DICOM Stats DatafileParameterSet is currently
-        associated with the Datafile, this function will return without
+        associated with the DataFile, this function will return without
         modifying any data.
 
     Returns
@@ -345,7 +346,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
     # Validate namespace keys in metadata
     schema_namespaces = trudat.NAMESPACE_TREE[Schema.DATAFILE].keys()
     if set(metadata.keys()) != set(schema_namespaces):
-        logger.error("nifcert.set_datafile_metadata Datafile[%d] "
+        logger.error("nifcert.set_datafile_metadata DataFile[%d] "
                      "expected %d Schemas, found %d in metadata dictionary",
                      len(schema_namespaces), len(metadata))
         return 0
@@ -357,7 +358,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
         schemas[s.namespace] = s
     # There must be a database Schema for each namespace key in metadata
     if set(schemas.keys()) != set(schema_namespaces):
-        logger.error("nifcert.set_datafile_metadata Datafile[%d] "
+        logger.error("nifcert.set_datafile_metadata DataFile[%d] "
                      "expected %d Schemas, found %d in database",
                      len(schema_namespaces), len(schema_rows))
         return 0
@@ -368,7 +369,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
             schema__namespace__in=schema_namespaces,
             datafile=datafile))
     num_param_sets = len(datafile_param_sets)
-    logger.debug("Datafile[%d] has %d existing DatasetParameterSets",
+    logger.debug("DataFile[%d] has %d existing DatasetParameterSets",
                  datafile.id, num_param_sets)
     if num_param_sets:
         if replace_metadata:
@@ -385,8 +386,8 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
         ps = DatafileParameterSet(schema=schema, datafile=datafile)
         ps.save()
         num_added += 1
-        logger.debug("  - Saving Datafile parameters for: "
-                     "Datafile[%d]    Schema[%d]:'%s='%s'",
+        logger.debug("  - Saving DataFile parameters for: "
+                     "DataFile[%d]    Schema[%d]:'%s='%s'",
                      datafile.id, schema.id, schema.name, schema.namespace)
         save_datafile_parameters(schema.id, ps, metadata[schema_name])
     return num_added
@@ -479,21 +480,22 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
 
 
 @task(name="nifcert.process_meta", ignore_result=True)
-def process_meta(get_metadata_func, df,
+def process_meta(get_metadata_func, datafile_id,
                  replace_file_metadata=True,
                  replace_dataset_metadata=True,
                  **kwargs):
-    """Extract metadata from a Datafile using a provided function and save the
+    """Extract metadata from a DataFile using a provided function and save the
     outputs as DatafileParameters.
 
     This may also trigger an update of the metadata for the Dataset
-    containing the Datafile.
+    containing the DataFile.
 
-    Computing the Dataset's NIF_certified metadata, will check the
-    NIF_certified metadata for all Datafiles in df's Dataset.
-    The new status will be 'no' if any Datafile has NIF_certified='no',
-    otherwise 'yes' if any Datafile has NIF_certified='yes',
-    otherwise there is no NIF_certified status for the Dataset.
+    Computing the Dataset's NIF_certified metadata will check the
+    NIF_certified metadata for all Datafiles in the same Dataset as
+    datafile_id.  The new status will be 'no' if any DataFile has
+    NIF_certified='no', otherwise 'yes' if any DataFile has
+    NIF_certified='yes', otherwise there is no NIF_certified status
+    for the Dataset.
 
     Parameters
     ----------
@@ -506,88 +508,105 @@ def process_meta(get_metadata_func, df,
         Parameters to be saved as values. Parameters (values) can be singular
         strings/numerics or a list of strings/numeric. If it's a list, each
         element will be saved as a new DatafileParameter.
-    df: tardis.tardis_portal.models.Datafile
-        Datafile instance to process.
+    datafile_id: tardis.tardis_portal.models.DataFile.id
+        Database id of the DataFile instance to process.
     replace_file_metadata: boolean (default: True)
-        WARNING: setting this to False may leave the metadata for df and
-        its containing DataSet in an inconsistent state.  Expert use only.
-        If True, any existing Datafile ParameterSets / metadata this
-        code maintains for df will be deleted, then replaced with freshly
-        computed metadata.
-        If False, and there is existing metadata for df maintained by
-        this code, that metadata and any metadata this code maintains for
-        df's DataSet will be left as-is.
-        If False, and there is no existing metadata for df maintained by
-        this code, that metadata will be computed and saved, then any
-        metadata this code maintains for df's DataSet will be created or
-        updated, provided replace_dataset_metadata permits that.
-    replace_dataset_metadata: boolean (default: True)
-        WARNING: setting this to False may leave the metadata for df and
-        its containing DataSet in an inconsistent state.  The only time
-        this is normally done is when processing batches of Datafiles from
-        the same DataSet.  To prevent needless recomputation, only the
-        last file in the batch needs to compute the containing DataSet's
-        metadata (True for the last file, False for all the others).
-        If True, any existing Dataset ParameterSets / metadata this
-        code maintains for df's Dataset will be deleted, then replaced
+        WARNING: setting this to False may leave the metadata for the
+        DataFile and its containing Dataset in an inconsistent state.
+        Expert use only.
+        If True, any existing DataFile ParameterSets / metadata this
+        code maintains for the DataFile will be deleted, then replaced
         with freshly computed metadata.
-        If False, and there is existing metadata for df's Dataset
-        maintained by this code, that metadata will be left as-is.
-        If False, and there is no existing metadata for df's DataSet
-        will be created or updated.
+        If False, and there is existing metadata for the DataFile
+        maintained by this code, that metadata and any metadata this
+        code maintains for the DataFile's Dataset will be left as-is.
+        If False, and there is no existing metadata for the DataFile
+        maintained by this code, that metadata will be computed and
+        saved, then any metadata this code maintains for the
+        DataFile's Dataset will be created or updated, provided
+        replace_dataset_metadata permits that.
+    replace_dataset_metadata: boolean (default: True)
+        WARNING: setting this to False may leave the metadata for the
+        DataFile and its containing Dataset in an inconsistent state.
+        The only time this is normally done is when processing batches
+        of Datafiles from the same Dataset.  To prevent needless
+        recomputation, only the last file in the batch needs to
+        compute the containing Dataset's metadata (True for the last
+        file, False for all the others).
+        If True, any existing Dataset ParameterSets / metadata this
+        code maintains for the DataFile's Dataset will be deleted,
+        then replaced with freshly computed metadata.
+        If False, and there is existing metadata for the DataFile's
+        Dataset maintained by this code, that metadata will be left
+        as-is.
+        If False, and there is no existing metadata for the DataFile's
+        Dataset, the metadata will be created.
+
     Returns
     -------
     None
+
     """
 
-    # NOTE: be very careful with locking and exceptions.  Catching all
-    # Exceptions to handle database exceptions like DoesNotExist or
-    # MultipleObjectsReturned may interfere with Celery's use of
-    # Exceptions.  Example: celery.app.task.retry() throws
-    # celery.exceptions.Retry to signal a worker to retry a task (see
-    # others in the docs for celery.exceptions).
+    # NOTE: be very careful with locking and exceptions.  Catching and
+    # ignoring all Exceptions to handle database exceptions like
+    # DoesNotExist, IndexError or MultipleObjectsReturned may
+    # interfere with Celery's use of Exceptions.  Example:
+    # celery.app.task.retry() throws celery.exceptions.Retry to signal
+    # a worker to retry a task (see others in the docs for
+    # celery.exceptions).
 
-    # TODO: Celery docs recommend passing df as an id not a model
-    # instance.  Replace the original mytardisbf design.
+    datafile_matches = DataFile.objects.filter(id=datafile_id)
+    num_matches = len(datafile_matches)
+    if num_matches != 1:
+        logger.debug("nifcert.process_meta couldn't fetch unique "
+                     "DataFile[%d], found %d matches",
+                     datafile_id, num_datafiles)
+        return
+    datafile = datafile_matches.first()
+    if datafile is None:
+        logger.debug("nifcert.process_meta found %d matches but "
+                     "couldn't fetch DataFile[%d]", num_datafiles, datafile_id)
 
     meta = None
     held_datafile_lock = False
-    logger.debug("nifcert.process_meta locking Datafile[%d]", df.id)
-    if acquire_datafile_lock(df.id):
+    logger.debug("nifcert.process_meta locking DataFile[%d]", datafile_id)
+    if acquire_datafile_lock(datafile_id):
         held_datafile_lock = True
-        logger.debug("nifcert.process_meta locked Datafile[%d]", df.id)
+        logger.debug("nifcert.process_meta locked DataFile[%d]", datafile_id)
 
         try:
             with transaction.atomic():
-                meta = get_datafile_metadata(df, get_metadata_func, kwargs)
+                meta = get_datafile_metadata(datafile, get_metadata_func,
+                                             kwargs)
                 if meta != None and len(meta) == 0:
                     # Recognised file type, but bad contents.  Mark as invalid.
                     meta = metadata.get_non_nifcert_metadata()
                 if meta:
-                    set_datafile_metadata(df, meta, replace_file_metadata)
+                    set_datafile_metadata(datafile, meta, replace_file_metadata)
                     logger.debug("nifcert.process_meta updated metadata for "
-                                 "Datafile[%d]", df.id)
+                                 "DataFile[%d]", datafile_id)
         except Exception, e:
             logger.warning("nifcert.process_meta Exception caught whilst "
-                           "processing Datafile[%d]:\n  exception='%s'",
-                           df.id, e)
+                           "processing DataFile[%d]:\n  exception='%s'",
+                           datafile_id, e)
             # Propagate important exceptions like Celery's retry() / Retry()
             raise
         finally:
-            release_datafile_lock(df.id)
+            release_datafile_lock(datafile_id)
 
     if not held_datafile_lock:
-        logger.debug("nifcert.process_meta didn't acquire Datafile[%d] lock, "
-                     "skipping Dataset update", df.id)
+        logger.debug("nifcert.process_meta didn't acquire DataFile[%d] lock, "
+                     "skipping Dataset update", datafile_id)
         return
     if meta == None:
         logger.debug("nifcert.process_meta no metadata to save for "
-                     "Datafile[%d]", df.id)
+                     "DataFile[%d]", datafile_id)
         return
 
     # TODO: split Dataset metadata update into a separate task
 
-    dataset_id = df.dataset.id  # TODO: pass in via task parameter
+    dataset_id = datafile.dataset.id  # TODO: pass in via task parameter
 
     logger.debug("nifcert.process_meta locking Dataset[%d]", dataset_id)
     if acquire_dataset_lock(dataset_id):
@@ -598,7 +617,8 @@ def process_meta(get_metadata_func, df,
                 if not meta:
                     # TODO: allow NIF Certified status to be deleted?
                     return
-                set_dataset_metadata(df.dataset, meta, replace_dataset_metadata)
+                set_dataset_metadata(datafile.dataset, meta,
+                                     replace_dataset_metadata)
 
             logger.debug("nifcert.process_meta finished Dataset[%d]",
                          dataset_id)

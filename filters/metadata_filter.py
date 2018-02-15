@@ -36,7 +36,7 @@ class MetadataFilter(object):
                           "Datafile[%d]", instance.id)
         q = getattr(settings, 'DATACERT_QUEUE', 'celery')
         tasks.process_meta.apply_async(
-            args=[metadata.scan_datafile_for_metadata, instance, True, True],
+            args=[metadata.scan_datafile_for_metadata, instance.id, True, True],
             queue=q)
         self.logger.debug("nifcert post-save metadata_filter callback end")
 
