@@ -1,7 +1,6 @@
 import os
 
 from nifcert.zipmeta.matchlist import get_zip_metadata_matches
-from nifcert import trudat
 
 def find_dicom_files(pvds_file_name):
     """
@@ -23,26 +22,26 @@ def find_dicom_files(pvds_file_name):
 
     The dictionary contains the following keys (all strings) and values:
 
-    trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY
+    nifcert.schemas.datafile.dicom_statistics.NUM_DICOM_FILES_NAME
         The total number of DICOM files found in all directories.
 
-    trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY
+    nifcert.schemas.datafile.dicom_statistics.TOTAL_DICOM_BYTES_NAME
         The total size in bytes of all DICOM files found in all
         directories.
 
-    trudat.DICOM_STATS_DATAFILE_NUM_DIRS_KEY
+    nifcert.schemas.datafile.dicom_statistics.NUM_DICOM_DIRS_NAME
         The total number of directories containing one or more DICOM
         files (non-recursive).
 
-    trudat.DICOM_STATS_DATAFILE_DIRS
+    nifcert.schemas.datafile.dicom_statistics.DICOM_DIRS_DICT_NAME
         A dictionary with one item for each directory that directly
         contains one or more child DICOM files (non-recursive).
         The key is the directory path.  The value is a dictionary with
         two key/value items:
-            trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY
+            nifcert.schemas.datafile.dicom_statistics.NUM_DICOM_FILES_NAME
                 the number of DICOM files and the total size of the
                 DICOM files within the directory (non-recursive).
-            trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY
+            nifcert.schemas.datafile.dicom_statistics.TOTAL_DICOM_BYTES_NAME
                 the total size of the DICOM files within the directory
                 (non-recursive).
         Only directories with DICOM files immediately within them appear
@@ -73,18 +72,19 @@ def find_dicom_files(pvds_file_name):
     # sys.stdout.write('\ntotal {0:4} dirs  {1:6} files  {2:12} bytes\n\n'
     #                  .format(dicomDirCount, dicomFileCount, dicomBytesCount))
 
+    import nifcert.schemas.datafile.dicom_statistics as ds
     resultDirs = {}
     for dirName, dirMeta in dicomDirs.items():
         # sys.stdout.write('{0:3} files  {1:8} bytes  {2}\n'
         #                  .format(dirMeta[0], dirMeta[1], dirName))
         resultDirs[dirName] = {
-            trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY: dirMeta[0],
-            trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY: dirMeta[1]
+            ds.NUM_DICOM_FILES_NAME: dirMeta[0],
+            ds.TOTAL_DICOM_BYTES_NAME: dirMeta[1]
         }
     result = {
-        trudat.DICOM_STATS_DATAFILE_NUM_FILES_KEY: dicomFileCount,
-        trudat.DICOM_STATS_DATAFILE_NUM_BYTES_KEY: dicomBytesCount,
-        trudat.DICOM_STATS_DATAFILE_NUM_DIRS_KEY: dicomDirCount,
-        trudat.DICOM_STATS_DATAFILE_DIRS_KEY: resultDirs
+        ds.NUM_DICOM_FILES_NAME: dicomFileCount,
+        ds.TOTAL_DICOM_BYTES_NAME: dicomBytesCount,
+        ds.NUM_DICOM_DIRS_NAME: dicomDirCount,
+        ds.DICOM_DIRS_DICT_NAME: resultDirs
     }
     return (result, None)

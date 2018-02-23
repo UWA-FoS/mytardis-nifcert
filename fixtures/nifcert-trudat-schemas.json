@@ -3,6 +3,36 @@
         "pk": null,
         "model": "tardis_portal.schema",
         "fields": {
+            "name": "TruDat NIF instrument",
+            "namespace": "http://trudat.cmca.uwa.edu.au/schemas/instrument/open-format/1.0",
+            "subtype": "",
+            "hidden": false,
+            "type": 5,
+            "immutable": true
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.parametername",
+        "fields": {
+            "name": "NIF_certification_enabled",
+            "data_type": 2,
+            "is_searchable": true,
+            "choices": (("yes", "yes"), ("no", "no")),
+            "comparison_type": 1,
+            "full_name": "NIF Certify enabled",
+            "units": "",
+            "order": 9999,
+            "immutable": true,
+            "schema": [
+                "http://trudat.cmca.uwa.edu.au/schemas/instrument/open-format/1.0"
+            ]
+        }
+    },
+    {
+        "pk": null,
+        "model": "tardis_portal.schema",
+        "fields": {
             "name": "TruDat NIF dataset",
             "namespace": "http://trudat.cmca.uwa.edu.au/schemas/dataset/open-format/1.0",
             "subtype": "",

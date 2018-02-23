@@ -12,8 +12,6 @@ from tardis.tardis_portal.models import DataFile
 from tardis.tardis_portal.models import DatafileParameterSet
 from tardis.tardis_portal.models import DatafileParameter
 
-from nifcert import trudat
-
 logger = logging.getLogger(__name__)
 
 # Locks are used to prevent concurrent access by Celery workers.
@@ -34,7 +32,8 @@ def generate_lockid(object_type, object_id):
 
 
 def acquire_dataset_lock(dataset_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """Lock a dataset to prevent filters from running mutliple times on
+    """
+    Lock a dataset to prevent filters from running mutliple times on
     the same dataset in quick succession.
 
     Parameters
@@ -55,7 +54,8 @@ def acquire_dataset_lock(dataset_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
 
 
 def release_dataset_lock(dataset_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """Release the lock on a Dataset from acquire_dataset_lock().
+    """
+    Release the lock on a Dataset from acquire_dataset_lock().
 
     Parameters
     ----------
@@ -71,7 +71,8 @@ def release_dataset_lock(dataset_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
 
 
 def acquire_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """Lock a datafile to prevent filters from running mutliple times on
+    """
+    Lock a datafile to prevent filters from running mutliple times on
     the same datafile in quick succession.
 
     Parameters
@@ -92,7 +93,8 @@ def acquire_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
 
 
 def release_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """Release the lock on a DataFile from acquire_datafile_lock().
+    """
+    Release the lock on a DataFile from acquire_datafile_lock().
 
     Parameters
     ----------
@@ -170,7 +172,8 @@ def save_dataset_parameters(schema_id, param_set, params):
 
 
 def get_datafile_metadata(df, get_metadata_func, kwargs):
-    """Extract metadata for a DataFile using a function provided
+    """
+    Extract metadata for a DataFile using a function provided
 
     Parameters
     ----------
@@ -203,7 +206,8 @@ def get_datafile_metadata(df, get_metadata_func, kwargs):
 
 
 def get_dataset_metadata(dataset_id):
-    """Scan the NIF_certified status of all Datafiles in a Dataset and
+    """
+    Scan the NIF_certified status of all Datafiles in a Dataset and
     return the NIF_Certified metadata for the Dataset as a whole.
 
     Any DataFile in a Dataset with NIF_certified=no makes the Dataset
@@ -219,63 +223,74 @@ def get_dataset_metadata(dataset_id):
     Returns
     -------
     dict:
-        A dictionary with trudat.NIFCERT_DATASET_NAMESPACE as its key
+        A dictionary with
+        nifcert.schemas.dataset.nifcert.SCHEMA_NAMESPACE as its key
         and as its value, a dictionary of parameter names and values.
-        trudat.NIFCERT_DATASET_CERTIFIED_KEY is the only key returned
-        in the parameters dictionary.
-        Returns an empty outer dictionary if
+        nifcert.schemas.dataset.nifcert.CERTIFIED_NAME is the only key
+        returned in the parameters dictionary.
+        Returns an empty outer dictionary if none of the DataFiles in
+        the Dataset have NIF Certified metadata.
 
     """
+    valid = True
+    cert_file_id = -1
 
-    # TODO: use QuerySet anotate & aggregate to condense work into one query?
-    #
-    # .annotate(num_yes=
-    #           Count(string_value__exact=trudat.NIFCERT_IS_CERTIFIED_VALUE,
-    #                 distinct=True),
-    #           num_no=
-    #           Count(string_value__exact=trudat.NIFCERT_NOT_CERTIFIED_VALUE))
+    # Dataset must only have one Bruker BioSpec file
+    from nifcert.brukerbiospec.files import FILE_EXT_LOWER
+    bruker_files = DataFile.objects.filter(
+        dataset=dataset_id,
+        filename__iendswith=FILE_EXT_LOWER)
+    num_bruker_files = len(bruker_files)
+    valid = num_bruker_files == 1
+    if valid:
+        cert_file_id = bruker_files.first().id
+    logger.debug("nifcert.get_dataset_metadata %d Bruker files in dataset",
+                 num_bruker_files)
 
-    dataset_certified_file_params = (
-        DatafileParameter.objects.filter(
-            parameterset__datafile__dataset__id=dataset_id,
-            name__name=trudat.NIFCERT_DATAFILE_CERTIFIED_KEY))
-    num_files_certified = 0
-    num_files_not_certified = 0
-    i = 0
-    for p in dataset_certified_file_params:
-        if p.string_value == trudat.NIFCERT_IS_CERTIFIED_VALUE:
-            num_files_certified += 1
-        elif p.string_value == trudat.NIFCERT_NOT_CERTIFIED_VALUE:
-            num_files_not_certified += 1
-        logger.debug("nifcert.process_meta     param match[%d] : "
-                     "DataFile[%d,%3d] '%s'='%s'",
-                     i, p.parameterset.datafile.dataset.id,
-                     p.parameterset.datafile.id, p.name, p.string_value)
-        i += 1
+    # Exactly one DataFile in the Dataset must have NIFCert=yes metadata
+    import nifcert.schemas.datafile.nifcert as ndfs
+    import nifcert.schemas.dataset.nifcert as ndss
+    if valid:
+        cert_file_params = DatafileParameter.objects.filter(
+            string_value__exact=ndfs.CERTIFIED_YES_VALUE,
+            name__name__exact=ndfs.CERTIFIED_NAME,
+            name__schema__namespace__exact=ndfs.SCHEMA_NAMESPACE,
+            name__schema__name__exact=ndfs.SCHEMA_NAME,
+            parameterset__datafile__dataset__id=dataset_id)
+        num_cert_file_params = len(cert_file_params)
+        logger.debug("nifcert.get_dataset_metadata %d "
+                     "datafile nifcert=yes params matched",
+                     num_cert_file_params)
 
-    if num_files_not_certified > 0:
-        value = trudat.NIFCERT_NOT_CERTIFIED_VALUE
-    elif num_files_certified > 0:
-        value = trudat.NIFCERT_IS_CERTIFIED_VALUE
+        # The NIFCert=yes DataFile must be the one Bruker BioSpec file found
+        if num_cert_file_params == 1:
+            cert_params_file_id = (
+                cert_file_params.first().parameterset.datafile.id)
+            valid = cert_file_id == cert_params_file_id
+            logger.debug("nifcert.get_dataset_metadata "
+                         "Datafile[%d] NIFCert, Datafile[%d] NIFCert=yes param",
+                         cert_file_id, cert_params_file_id)
+        else:
+            valid = False
+
+    if valid:
+        value = ndss.CERTIFIED_YES_VALUE
     else:
-        value = None
+        value = ndss.CERTIFIED_NO_VALUE
     meta = dict()
     if value:
         nif_meta = dict()
-        nif_meta[trudat.NIFCERT_DATASET_CERTIFIED_KEY] = value
-        meta[trudat.NIFCERT_DATASET_NAMESPACE] = nif_meta
+        nif_meta[ndss.CERTIFIED_NAME] = value
+        meta[ndss.SCHEMA_NAMESPACE] = nif_meta
 
-    logger.debug("nifcert.process_meta categorised Datafiles in Dataset[%d]:   "
-                 "%s=%d  %s=%d  other=%d  total=%d",
-                 dataset_id,
-                 trudat.NIFCERT_IS_CERTIFIED_VALUE, num_files_certified,
-                 trudat.NIFCERT_NOT_CERTIFIED_VALUE, num_files_not_certified,
-                 i - (num_files_certified + num_files_not_certified), i)
+    logger.debug("nifcert.get_dataset_metadata Dataset[%d] %s=%s",
+                 dataset_id, ndss.CERTIFIED_NAME, value)
     return meta
 
 
 def set_datafile_metadata(datafile, metadata, replace_metadata):
-    """Set the nifcert metadata for a DataFile.
+    """
+    Set the nifcert metadata for a DataFile.
 
     This app is solely responsible for managing metadata associated
     with its schema namespaces.  Rather than attempting to check,
@@ -302,19 +317,21 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
     Returns
     -------
     If successful, returns the number of DatafileParameterSets added
-    (currently 2, always a positive number if there is metadata to add).
+    (always a positive number if there is metadata to add).
     If replace_metadata is False and prevents metadata being added,
-    returns the number of obstructing DatafileParameterSets, negated.
+    returns the negated number of obstructing DatafileParameterSets.
     Returns zero if an error occurs and no metadata was changed.
     """
     if not datafile:
         return 0
 
     # Validate namespace keys in metadata
-    schema_namespaces = trudat.NAMESPACE_TREE[Schema.DATAFILE].keys()
-    if set(metadata.keys()) != set(schema_namespaces):
+    import nifcert.schemas as ns
+    schema_namespaces = ns.get_datafile_schema_tree().keys()
+    if set(metadata.keys()) > set(schema_namespaces):
         logger.error("nifcert.set_datafile_metadata DataFile[%d] "
-                     "expected %d Schemas, found %d in metadata dictionary",
+                     "%d database Schemas don't include all %d found in "
+                     "metadata dictionary",
                      len(schema_namespaces), len(metadata))
         return 0
 
@@ -327,7 +344,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
     if set(schemas.keys()) != set(schema_namespaces):
         logger.error("nifcert.set_datafile_metadata DataFile[%d] "
                      "expected %d Schemas, found %d in database",
-                     len(schema_namespaces), len(schema_rows))
+                     datafile.id, len(schema_namespaces), len(schema_rows))
         return 0
 
     # Delete existing ParameterSets (and their parameters; cascaded)
@@ -361,7 +378,8 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
 
 
 def set_dataset_metadata(dataset, metadata, replace_metadata):
-    """Set the nifcert metadata for a Dataset.
+    """
+    Set the nifcert metadata for a Dataset.
 
     This app is solely responsible for managing metadata associated
     with its schema namespaces.  Rather than attempting to check,
@@ -397,7 +415,8 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
         return 0
 
     # Validate namespace keys in metadata
-    schema_namespaces = trudat.NAMESPACE_TREE[Schema.DATASET].keys()
+    import nifcert.schemas as ns
+    schema_namespaces = ns.get_dataset_schema_tree().keys()
     if set(metadata.keys()) != set(schema_namespaces):
         logger.error("nifcert.set_dataset_metadata Dataset[%d] "
                      "expected %d Schemas, found %d in metadata dictionary",
@@ -451,7 +470,8 @@ def process_meta(get_metadata_func, datafile_id,
                  replace_file_metadata=True,
                  replace_dataset_metadata=True,
                  **kwargs):
-    """Extract metadata from a DataFile using a provided function and save the
+    """
+    Extract metadata from a DataFile using a provided function and save the
     outputs as DatafileParameters.
 
     This may also trigger an update of the metadata for the Dataset
@@ -542,11 +562,17 @@ def process_meta(get_metadata_func, datafile_id,
 
         try:
             with transaction.atomic():
-                meta = get_datafile_metadata(datafile, get_metadata_func,
-                                             kwargs)
-                if meta != None and len(meta) == 0:
-                    # Recognised file type, but bad contents.  Mark as invalid.
-                    meta = metadata.get_non_nifcert_metadata()
+
+                from nifcert import metadata
+                if metadata.is_datafile_instrument_nifcert(datafile_id):
+                    meta = get_datafile_metadata(datafile, get_metadata_func,
+                                                 kwargs)
+                else:
+                    logger.debug("nifcert.process_meta DataFile[%d] is not "
+                                 "associated with a NIF_certification_enabled "
+                                 "instrument", datafile_id)
+                if meta == None or len(meta) == 0:
+                    meta = metadata.get_not_nifcert_metadata_value()
                 if meta:
                     set_datafile_metadata(datafile, meta, replace_file_metadata)
                     logger.debug("nifcert.process_meta updated metadata for "

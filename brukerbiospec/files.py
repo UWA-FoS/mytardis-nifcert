@@ -2,9 +2,13 @@
 
 import os
 
+FILE_EXT =       ".PvDatasets"
+FILE_EXT_LOWER = FILE_EXT.lower()
+
 
 def is_bruker_biospec_file_path(path):
-    """Return a boolean value indicating whether a filename appears to be
+    """
+    Return a boolean value indicating whether a filename appears to be
     a Bruker Biospec MRI data file or not.
 
     Parameters
@@ -17,4 +21,4 @@ def is_bruker_biospec_file_path(path):
 
     """
     base, ext = os.path.splitext(os.path.basename(path))
-    return ext.lower() == '.pvdatasets'
+    return ext.lower() == FILE_EXT_LOWER
