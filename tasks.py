@@ -562,17 +562,17 @@ def process_meta(get_metadata_func, datafile_id,
 
         try:
             with transaction.atomic():
-
                 from nifcert import metadata
                 if metadata.is_datafile_instrument_nifcert(datafile_id):
                     meta = get_datafile_metadata(datafile, get_metadata_func,
                                                  kwargs)
+                    # All files from a NIFCert instrument get NIFCert metadata
+                    if meta == None or len(meta) == 0:
+                        meta = metadata.get_not_nifcert_metadata_value()
                 else:
                     logger.debug("nifcert.process_meta DataFile[%d] is not "
                                  "associated with a NIF_certification_enabled "
                                  "instrument", datafile_id)
-                if meta == None or len(meta) == 0:
-                    meta = metadata.get_not_nifcert_metadata_value()
                 if meta:
                     set_datafile_metadata(datafile, meta, replace_file_metadata)
                     logger.debug("nifcert.process_meta updated metadata for "
