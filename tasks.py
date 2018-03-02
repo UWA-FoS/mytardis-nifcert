@@ -206,14 +206,17 @@ def get_datafile_metadata(df, get_metadata_func, kwargs):
 
 
 def get_dataset_metadata(dataset_id):
-    """
-    Scan the NIF_certified status of all Datafiles in a Dataset and
+    """Scan the NIF_certified status of all Datafiles in a Dataset and
     return the NIF_Certified metadata for the Dataset as a whole.
 
-    Any DataFile in a Dataset with NIF_certified=no makes the Dataset
-    NIF_certified=no; otherwise one or more Datafiles with
-    NIF_certified=yes makes the Dataset NIF_certified=yes; otherwise
-    the Dataset has no NIF_certified metadata.
+    Only Datasets associated with an Instrument that has
+    NIF_certification_enabled=yes will generate metadata.
+
+    To be valid, a Dataset must have exactly one Bruker Biospec
+    Datafile with NIFCert=yes (a valid .PvDataSets file).  Any other
+    Bruker Biospec Datafiles will make the Dataset NIFCert=no.  The
+    Dataset may have any number of DataFiles that are not Bruker
+    Biospec files but they must not have NIFCert=yes.
 
     Parameters
     ----------
@@ -244,8 +247,8 @@ def get_dataset_metadata(dataset_id):
     valid = num_bruker_files == 1
     if valid:
         cert_file_id = bruker_files.first().id
-    logger.debug("nifcert.get_dataset_metadata %d Bruker files in dataset",
-                 num_bruker_files)
+    logger.info("nifcert.get_dataset_metadata %d Bruker files in dataset",
+                num_bruker_files)
 
     # Exactly one DataFile in the Dataset must have NIFCert=yes metadata
     import nifcert.schemas.datafile.nifcert as ndfs
@@ -258,18 +261,17 @@ def get_dataset_metadata(dataset_id):
             name__schema__name__exact=ndfs.SCHEMA_NAME,
             parameterset__datafile__dataset__id=dataset_id)
         num_cert_file_params = len(cert_file_params)
-        logger.debug("nifcert.get_dataset_metadata %d "
-                     "datafile nifcert=yes params matched",
-                     num_cert_file_params)
+        logger.info("nifcert.get_dataset_metadata %d datafile nifcert=yes "
+                    "params matched", num_cert_file_params)
 
         # The NIFCert=yes DataFile must be the one Bruker BioSpec file found
         if num_cert_file_params == 1:
             cert_params_file_id = (
                 cert_file_params.first().parameterset.datafile.id)
             valid = cert_file_id == cert_params_file_id
-            logger.debug("nifcert.get_dataset_metadata "
-                         "Datafile[%d] NIFCert, Datafile[%d] NIFCert=yes param",
-                         cert_file_id, cert_params_file_id)
+            logger.info("nifcert.get_dataset_metadata "
+                        "Datafile[%d] NIFCert, Datafile[%d] NIFCert=yes param",
+                        cert_file_id, cert_params_file_id)
         else:
             valid = False
 
@@ -283,8 +285,8 @@ def get_dataset_metadata(dataset_id):
         nif_meta[ndss.CERTIFIED_NAME] = value
         meta[ndss.SCHEMA_NAMESPACE] = nif_meta
 
-    logger.debug("nifcert.get_dataset_metadata Dataset[%d] %s=%s",
-                 dataset_id, ndss.CERTIFIED_NAME, value)
+    logger.info("nifcert.get_dataset_metadata Dataset[%d] %s=%s",
+                dataset_id, ndss.CERTIFIED_NAME, value)
     return meta
 
 
@@ -377,7 +379,7 @@ def set_datafile_metadata(datafile, metadata, replace_metadata):
     return num_added
 
 
-def set_dataset_metadata(dataset, metadata, replace_metadata):
+def set_dataset_metadata(dataset_id, metadata, replace_metadata):
     """
     Set the nifcert metadata for a Dataset.
 
@@ -388,7 +390,7 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
 
     Parameters
     ----------
-    dataset: Dataset
+    dataset_id: tardis.tardis_portal.models.Dataset.id
         The Dataset having its metadata updated.
 
     metadata: dict
@@ -411,8 +413,14 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
     returns the number of obstructing DatasetParameterSets, negated.
     Returns zero if an error occurs and no metadata was changed.
     """
-    if not dataset:
+    dataset_rows = Dataset.objects.filter(id=dataset_id)
+    num_dataset_rows = len(dataset_rows)
+    if num_dataset_rows != 1:
+        logger.error("nifcert.set_dataset_metadata Dataset[%d] "
+                     "couldn't fetch unique Dataset by id, found %d",
+                     dataset_id, num_dataset_rows)
         return 0
+    dataset = dataset_rows.first()
 
     # Validate namespace keys in metadata
     import nifcert.schemas as ns
@@ -420,7 +428,7 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
     if set(metadata.keys()) != set(schema_namespaces):
         logger.error("nifcert.set_dataset_metadata Dataset[%d] "
                      "expected %d Schemas, found %d in metadata dictionary",
-                     dataset.id, len(schema_namespaces), len(metadata))
+                     dataset_id, len(schema_namespaces), len(metadata))
         return 0
 
     # Fetch Schema instances for (re)creating ParameterSets
@@ -432,17 +440,17 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
     if set(schemas.keys()) != set(schema_namespaces):
         logger.error("nifcert.set_dataset_metadata Dataset[%d] "
                      "expected %d Schemas, found %d in database",
-                     dataset.id, len(schema_namespaces), len(schema_rows))
+                     dataset_id, len(schema_namespaces), len(schema_rows))
         return 0
 
     # Delete existing ParameterSets (and their parameters; cascaded)
     dataset_param_sets = (
         DatasetParameterSet.objects.filter(
             schema__namespace__in=schema_namespaces,
-            dataset=dataset))
+            dataset__id=dataset_id))
     num_param_sets = len(dataset_param_sets)
     logger.debug("Dataset[%d] has %d existing DatasetParameterSets",
-                 dataset.id, num_param_sets)
+                 dataset_id, num_param_sets)
     if num_param_sets:
         if replace_metadata:
             # dataset_param_sets.delete() doesn't call any delete() method
@@ -460,29 +468,19 @@ def set_dataset_metadata(dataset, metadata, replace_metadata):
         num_added += 1
         logger.debug("  - Saving Dataset parameters for: "
                      "Dataset[%d]    Schema[%d]:'%s='%s'",
-                     dataset.id, schema.id, schema.name, schema.namespace)
+                     dataset_id, schema.id, schema.name, schema.namespace)
         save_dataset_parameters(schema.id, ps, metadata[schema_name])
     return num_added
 
 
-@task(name="nifcert.process_meta", ignore_result=True)
-def process_meta(get_metadata_func, datafile_id,
-                 replace_file_metadata=True,
-                 replace_dataset_metadata=True,
-                 **kwargs):
+@task(name="nifcert.update_datafile_status", ignore_result=True)
+def update_datafile_status(get_metadata_func, datafile_id,
+                           check_nifcert_instrument=True,
+                           replace_file_metadata=True,
+                           **kwargs):
     """
-    Extract metadata from a DataFile using a provided function and save the
-    outputs as DatafileParameters.
-
-    This may also trigger an update of the metadata for the Dataset
-    containing the DataFile.
-
-    Computing the Dataset's NIF_certified metadata will check the
-    NIF_certified metadata for all Datafiles in the same Dataset as
-    datafile_id.  The new status will be 'no' if any DataFile has
-    NIF_certified='no', otherwise 'yes' if any DataFile has
-    NIF_certified='yes', otherwise there is no NIF_certified status
-    for the Dataset.
+    Extract metadata from a DataFile using a function provided as a
+    parameter and save the outputs as DatafileParameters.
 
     Parameters
     ----------
@@ -497,6 +495,10 @@ def process_meta(get_metadata_func, datafile_id,
         element will be saved as a new DatafileParameter.
     datafile_id: tardis.tardis_portal.models.DataFile.id
         Database id of the DataFile instance to process.
+    check_nifcert_instrument: boolean (default: True)
+        If False, don't check whether the DataFile came from an Instrument
+        with NIF_certification_enabled=yes and always add NIFCert metadata.
+        If True, check the instrument is enabled=yes before adding metadata.
     replace_file_metadata: boolean (default: True)
         WARNING: setting this to False may leave the metadata for the
         DataFile and its containing Dataset in an inconsistent state.
@@ -505,21 +507,104 @@ def process_meta(get_metadata_func, datafile_id,
         code maintains for the DataFile will be deleted, then replaced
         with freshly computed metadata.
         If False, and there is existing metadata for the DataFile
-        maintained by this code, that metadata and any metadata this
-        code maintains for the DataFile's Dataset will be left as-is.
+        maintained by this code, that metadata will be left as-is.
         If False, and there is no existing metadata for the DataFile
         maintained by this code, that metadata will be computed and
-        saved, then any metadata this code maintains for the
-        DataFile's Dataset will be created or updated, provided
-        replace_dataset_metadata permits that.
+        saved.
+
+    Returns
+    -------
+    None
+
+    """
+    from nifcert import metadata
+    logger.info("nifcert.update_datafile_status DataFile[%d]", datafile_id)
+
+    if check_nifcert_instrument:
+        if not metadata.is_datafile_instrument_nifcert(datafile_id):
+            logger.debug("nifcert.update_datafile_status DataFile[%d] is not "
+                         "associated with a " "NIF_certification_enabled "
+                         "instrument", datafile_id)
+            return
+
+    datafile_matches = DataFile.objects.filter(id=datafile_id)
+    num_matches = len(datafile_matches)
+    if num_matches != 1:
+        logger.debug("nifcert.update_datafile_status couldn't fetch unique "
+                     "DataFile[%d], found %d matches",
+                     datafile_id, num_datafiles)
+        return
+    datafile = datafile_matches.first()
+    if datafile is None:
+        logger.debug("nifcert.update_datafile_status found %d matches but "
+                     "couldn't fetch DataFile[%d]", num_datafiles, datafile_id)
+
+    meta = None
+    logger.debug("nifcert.update_datafile_status locking DataFile[%d]",
+                 datafile_id)
+    if acquire_datafile_lock(datafile_id):
+        logger.debug("nifcert.update_datafile_status locked DataFile[%d]",
+                     datafile_id)
+
+        try:
+            with transaction.atomic():
+                meta = get_datafile_metadata(datafile, get_metadata_func,
+                                             kwargs)
+                # All files from a NIFCert instrument get NIFCert metadata
+                if meta == None or len(meta) == 0:
+                    meta = metadata.get_not_nifcert_metadata_value()
+                if meta:
+                    set_datafile_metadata(datafile, meta, replace_file_metadata)
+                    logger.debug("nifcert.update_datafile_status updated "
+                                 "metadata for DataFile[%d]", datafile_id)
+        except Exception, e:
+            logger.warning("nifcert.update_datafile_status Exception caught "
+                           "whilst processing DataFile[%d]:\n  exception='%s'",
+                           datafile_id, e)
+            # Propagate important exceptions like Celery's retry() / Retry()
+            raise
+        finally:
+            release_datafile_lock(datafile_id)
+    else:
+        logger.debug("nifcert.update_datafile_status didn't acquire "
+                     "DataFile[%d] lock, skipping Dataset update", datafile_id)
+        return
+
+    if meta == None:
+        logger.debug("nifcert.update_datafile_status no metadata to save for "
+                     "DataFile[%d]", datafile_id)
+
+
+@task(name="nifcert.update_dataset_status", ignore_result=True)
+def update_dataset_status(dataset_id,
+                          datafile_id=-1,
+                          check_nifcert_instrument=True,
+                          replace_dataset_metadata=True,
+                          **kwargs):
+    """Update the NIRCert metadata for a Dataset, usually in response to
+    a new DataFile being added.
+
+    Only Datasets associated with an Instrument that has
+    NIF_certification_enabled=yes will be updated.
+
+    See nifcert.tasks.get_dataset_metadata() for details of how the
+    metadata is computed.
+
+    Parameters
+    ----------
+    dataset_id: tardis.tardis_portal.models.Dataset.id
+        Database id of the Dataset instance to process.
+    datafile_id: tardis.tardis_portal.models.DataFile.id
+        Database id of the DataFile instance to process.
+    check_nifcert_instrument: boolean (default: True)
+        If False, don't check whether the Dataset came from an Instrument
+        with NIF_certification_enabled=yes and always add NIFCert metadata.
+        If True, check the instrument is enabled=yes before adding metadata.
     replace_dataset_metadata: boolean (default: True)
         WARNING: setting this to False may leave the metadata for the
-        DataFile and its containing Dataset in an inconsistent state.
+        DataFiles and their containing Dataset in an inconsistent state.
         The only time this is normally done is when processing batches
-        of Datafiles from the same Dataset.  To prevent needless
-        recomputation, only the last file in the batch needs to
-        compute the containing Dataset's metadata (True for the last
-        file, False for all the others).
+        of Datafiles from the same Dataset.
         If True, any existing Dataset ParameterSets / metadata this
         code maintains for the DataFile's Dataset will be deleted,
         then replaced with freshly computed metadata.
@@ -534,92 +619,54 @@ def process_meta(get_metadata_func, datafile_id,
     None
 
     """
+    logger.info("nifcert.update_dataset_status Dataset[%d] DataFile[%d]",
+                dataset_id, datafile_id)
 
-    # NOTE: be very careful with locking and exceptions.  Catching and
-    # ignoring all Exceptions to handle database exceptions like
-    # DoesNotExist, IndexError or MultipleObjectsReturned may
-    # interfere with Celery's use of Exceptions.  Example:
-    # celery.app.task.retry() throws celery.exceptions.Retry to signal
-    # a worker to retry a task (see others in the docs for
-    # celery.exceptions).
+    if check_nifcert_instrument:
+        from nifcert import metadata
+        if not metadata.is_datafile_instrument_nifcert(datafile_id):
+            logger.debug("nifcert.update_dataset_status Dataset[%d] is not "
+                         "associated with a NIF_certification_enabled "
+                         "instrument", dataset_id)
+            return
 
-    datafile_matches = DataFile.objects.filter(id=datafile_id)
-    num_matches = len(datafile_matches)
-    if num_matches != 1:
-        logger.debug("nifcert.process_meta couldn't fetch unique "
-                     "DataFile[%d], found %d matches",
-                     datafile_id, num_datafiles)
-        return
-    datafile = datafile_matches.first()
-    if datafile is None:
-        logger.debug("nifcert.process_meta found %d matches but "
-                     "couldn't fetch DataFile[%d]", num_datafiles, datafile_id)
+    # If the update was triggered by a new DataFile, include its id in
+    # the Celery identifier used to lock the Dataset (along with the
+    # Dataset id).  This protects against multiple concurrent
+    # instances of this task for the same DataFile+Dataset, but allows
+    # concurrent instances for different DataFiles in the same
+    # Dataset.  Separate Django database transactions and locking are
+    # used so the database enforces race-free sequential execution of
+    # simultaneous tasks for different Datafiles from the same Dataset
+    # (rather than race-prone parallel).  We don't assume a Celery
+    # result backend is available.
 
-    meta = None
-    logger.debug("nifcert.process_meta locking DataFile[%d]", datafile_id)
-    if acquire_datafile_lock(datafile_id):
-        logger.debug("nifcert.process_meta locked DataFile[%d]", datafile_id)
-
-        try:
-            with transaction.atomic():
-                from nifcert import metadata
-                if metadata.is_datafile_instrument_nifcert(datafile_id):
-                    meta = get_datafile_metadata(datafile, get_metadata_func,
-                                                 kwargs)
-                    # All files from a NIFCert instrument get NIFCert metadata
-                    if meta == None or len(meta) == 0:
-                        meta = metadata.get_not_nifcert_metadata_value()
-                else:
-                    logger.debug("nifcert.process_meta DataFile[%d] is not "
-                                 "associated with a NIF_certification_enabled "
-                                 "instrument", datafile_id)
-                if meta:
-                    set_datafile_metadata(datafile, meta, replace_file_metadata)
-                    logger.debug("nifcert.process_meta updated metadata for "
-                                 "DataFile[%d]", datafile_id)
-        except Exception, e:
-            logger.warning("nifcert.process_meta Exception caught whilst "
-                           "processing DataFile[%d]:\n  exception='%s'",
-                           datafile_id, e)
-            # Propagate important exceptions like Celery's retry() / Retry()
-            raise
-        finally:
-            release_datafile_lock(datafile_id)
+    if datafile_id == -1:
+        lock_id = "{:d}".format(dataset_id, datafile_id)
     else:
-        logger.debug("nifcert.process_meta didn't acquire DataFile[%d] lock, "
-                     "skipping Dataset update", datafile_id)
-        return
-
-    if meta == None:
-        logger.debug("nifcert.process_meta no metadata to save for "
-                     "DataFile[%d]", datafile_id)
-        return
-
-    # TODO: split Dataset metadata update into a separate task
-
-    dataset_id = datafile.dataset.id  # TODO: pass in via task parameter
-
-    logger.debug("nifcert.process_meta locking Dataset[%d]", dataset_id)
-    if acquire_dataset_lock(dataset_id):
-        logger.debug("nifcert.process_meta locked Dataset[%d]", dataset_id)
+        lock_id = "{:d}-{:d}".format(dataset_id, datafile_id)
+    logger.info("nifcert.update_dataset_status locking Dataset[%d]",
+                dataset_id)
+    if acquire_dataset_lock(lock_id):
+        logger.debug("nifcert.update_dataset_status locked Dataset[%d]",
+                     dataset_id)
         try:
             with transaction.atomic():
                 meta = get_dataset_metadata(dataset_id)
                 if not meta:
                     # TODO: allow NIF Certified status to be deleted?
                     return
-                set_dataset_metadata(datafile.dataset, meta,
-                                     replace_dataset_metadata)
+                set_dataset_metadata(dataset_id, meta, replace_dataset_metadata)
 
-            logger.debug("nifcert.process_meta finished Dataset[%d]",
-                         dataset_id)
+            logger.info("nifcert.update_dataset_status finished Dataset[%d]",
+                        dataset_id)
 
         except Exception, e:
-            logger.warning("nifcert.process_meta Exception caught whilst "
-                           "processing Dataset:\n  '%s'", e)
+            logger.warning("nifcert.update_dataset_status Exception caught "
+                           "whilst processing Dataset:\n  '%s'", e)
             # Propagate important exceptions like Celery's retry() / Retry()
             raise
         finally:
-            release_dataset_lock(dataset_id)
-            logger.debug("nifcert.process_meta unlocked Dataset[%d]",
+            release_dataset_lock(lock_id)
+            logger.debug("nifcert.update_dataset_status unlocked Dataset[%d]",
                          dataset_id)
