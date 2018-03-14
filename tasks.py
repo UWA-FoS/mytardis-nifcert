@@ -1,6 +1,5 @@
 "Celery tasks and related functions for setting Datafile and Dataset metadata"
 import logging
-from django.core.cache import caches
 from django.db import transaction
 from celery.task import task
 from tardis.tardis_portal.models import Schema
@@ -14,99 +13,295 @@ from tardis.tardis_portal.models import DatafileParameter
 
 logger = logging.getLogger(__name__)
 
-# Locks are used to prevent concurrent access by Celery workers.
-# Choose timeouts proportional to the amount of work being done,
-# allowing for very heavily loaded machines.
+def assert_lock_datafile_failed_instance(lock_instance):
+    """Set the the NIFCert DatafileCertificationLock state for lock_instance
+    to FAILED
 
-DATASET_LOCK_TIMEOUT = 60 * 5  # Lock expires in 5 minutes
-DATAFILE_LOCK_TIMEOUT = 60 * 1  # Lock expires in 1 minute
-
-# Default cache name used for Celery locks.
-
-DEFAULT_CELERY_LOCK_CACHE = 'celery-locks'
-
-
-def generate_lockid(object_type, object_id):
-    """Return a lock id for database operations"""
-    return "tardis_portal_nifcert_lock_{}_{}".format(object_type, object_id)
-
-
-def acquire_dataset_lock(dataset_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """
-    Lock a dataset to prevent filters from running mutliple times on
-    the same dataset in quick succession.
+    Take care to call this outside any transaction that may rollback the lock
+    state to its previous value.
 
     Parameters
     ----------
-    dataset_id: int
-        ID of the dataset
-    cache_name: string (default = "celery-locks")
-        Optional specify the name of the lock cache to store this lock in
+    lock_instance: nifcert.DatafileCertificationLock
+        The DatafileCertificationLock instance to update to the failed state
+
     Returns
     -------
-    locked: boolean
-        Boolean representing whether dataset is locked
+    True if the lock state was updated, otherwise False.
 
     """
-    lockid = generate_lockid('dataset', dataset_id)
-    cache = caches[cache_name]
-    return cache.add(lockid, 'true', DATASET_LOCK_TIMEOUT)
+    from nifcert.models import DatafileCertificationLock as DataCertLock
+    lock.set_state(DataCertLock.FAILED)
+    lock.save()
+    return True
+    
 
+def assert_lock_datafile_failed(datafile_id):
+    """Set the the NIFCert DatafileCertificationLock state for a particular
+    DataFile to FAILED
 
-def release_dataset_lock(dataset_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """
-    Release the lock on a Dataset from acquire_dataset_lock().
+    Creates a new DatafileCertificationLock for the Datafile if one doesn't
+    exist.
+
+    Take care to call this outside any transaction that may rollback the lock
+    state to its previous value (pre-FAILED).
 
     Parameters
     ----------
-    dataset_id: int
-        ID of the dataset
-    cache_name: string (default = "celery-locks")
-        Optional specify the name of the lock cache to store this lock in
+    datafile_id: Database id of the DataFile being processed
 
-    """
-    lockid = generate_lockid('dataset', dataset_id)
-    cache = caches[cache_name]
-    cache.delete(lockid)
-
-
-def acquire_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """
-    Lock a datafile to prevent filters from running mutliple times on
-    the same datafile in quick succession.
-
-    Parameters
-    ----------
-    datafile_id: int
-        ID of the datafile
-    cache_name: string (default = "celery-locks")
-        Optional specify the name of the lock cache to store this lock in
     Returns
     -------
-    locked: boolean
-        Boolean representing whether datafile is locked
+    True if the lock state was updated, otherwise False.
 
     """
-    lockid = generate_lockid('datafile', datafile_id)
-    cache = caches[cache_name]
-    return cache.add(lockid, 'true', DATAFILE_LOCK_TIMEOUT)
+    from nifcert.models import DatafileCertificationLock as DataCertLock
+    lock, was_created = DataCertLock.objects.get_or_create(datafile=datafile_id)
+    if lock is None: # shouldn't happen, but just in case...
+        logger.error(
+            "nifcert.tasks.assert_lock_datafile_failed() "
+            "get_or_create() failed for DataFile[%d]", datafile_id)
+        return False
+    return assert_lock_datafile_failed_instance(lock)
 
 
-def release_datafile_lock(datafile_id, cache_name=DEFAULT_CELERY_LOCK_CACHE):
-    """
-    Release the lock on a DataFile from acquire_datafile_lock().
+def assert_lock_datafile_processing(datafile_id):
+
+    """Try to acquire exclusive ownership of the NIFCert
+    DatafileCertificationLock state that indicates its holder is scanning the
+    DataFile for NIFCert metadata and adding it to the associated NIFCert
+    DatafileParameterSet.
+
+    This function wraps its database accesses in a transaction.  The
+    caller is not required to do so.
+
+    The lock state acquired by this function should be advanced to
+    DATAFILE_METADATA_SAVED by the caller after the NIFCert metadata
+    has been saved.
+
+    The lock state acquired by this function does not need to be
+    released by the caller.  It's state will be updated by the tasks
+    as processing of the NIFCert metadata progresses.
 
     Parameters
     ----------
-    datafile_id: int
-        ID of the datafile
-    cache_name: string (default = "celery-locks")
-        Optional specify the name of the lock cache to store this lock in
+    datafile_id: id of the DataFile being processed
 
-    """
-    lockid = generate_lockid('datafile', datafile_id)
-    cache = caches[cache_name]
-    cache.delete(lockid)
+    Returns
+    -------
+    True if the lock state was updated, otherwise False.
+
+    """ 
+    lock_state_asserted = False
+    try:
+        with transaction.atomic():
+            from nifcert.models import DatafileCertificationLock \
+                as DataCertLock
+            lock_rows = DataCertLock.objects.filter(datafile=datafile_id)
+            num_lock_rows = len(lock_rows)
+            if num_lock_rows != 1:
+                logger.error(
+                    "nifcert.tasks.assert_lock_datafile_processing() "
+                    "lock query for DataFile[%d] returned %d matches, not, 1",
+                    datafile_id, num_lock_rows)
+                return False
+            lock = lock_rows.first()
+            if lock is None: # first() shouldn't fail, but just in case...
+                logger.error(
+                    "nifcert.tasks.assert_lock_datafile_processing() "
+                    "found 1 match but couldn't fetch DataFile[%d] lock",
+                    datafile_id)
+                return False
+            expected_state = DataCertLock.DATAFILE_VERIFIED
+            if lock.state != expected_state:
+                logger.debug(
+                    "nifcert.tasks.assert_lock_datafile_processing() "
+                    "lock.state for DataFile[%d] is %s, not expected %s",
+                    datafile_id, DataCertLock.state_to_string(lock.state),
+                    DataCertLock.state_to_string(expected_state))
+                return False
+            lock.set_state(DataCertLock.DATAFILE_PROCESSING)
+            lock.save()
+            lock_state_asserted = True
+    except DatabaseError, e:
+        logger.error(
+            "nifcert.tasks.assert_lock_datafile_processing() "
+            "DataCertLock handling for DataFile[%d] returned a "
+            "DatabaseError:  %s", datafile_id, e)
+        raise
+    return lock_state_asserted
+
+
+def assert_lock_datafile_metadata_saved(datafile_id):
+    """Try to acquire exclusive ownership of the NIFCert
+    DatafileCertificationLock state that indicates its holder has finnished
+    scanning the DataFile for NIFCert metadata and adding it to the associated
+    NIFCert DatafileParameterSet.
+
+    This function does not wrap its database accesses in a transaction or
+    "try" statement.  The caller should include invoke this function in the
+    same "try" / transaction that updates the NIFCert DataFile metadata.
+
+    The lock state acquired by this function does not need to be released by
+    the caller.  The lock state will be updated by a subsequent NIFCert
+    metadata processing task if required.
+
+    Parameters
+    ----------
+    datafile_id: id of the DataFile being processed
+
+    Returns
+    -------
+    True if the required lock state was acquired, otherwise False.
+
+    """ 
+    lock_state_asserted = False
+    from nifcert.models import DatafileCertificationLock as DataCertLock
+    lock_rows = DataCertLock.objects.filter(datafile=datafile_id)
+    num_lock_rows = len(lock_rows)
+    if num_lock_rows != 1:
+        logger.error(
+            "nifcert.tasks.assert_lock_datafile_metadata_saved() "
+            "lock query for DataFile[%d] returned %d matches, not, 1",
+            datafile_id, num_lock_rows)
+        return False
+    lock = lock_rows.first()
+    if lock is None: # first() shouldn't fail, but just in case...
+        logger.error(
+            "nifcert.tasks.assert_lock_datafile_metadata_saved() "
+            "found 1 match but couldn't fetch DataFile[%d] lock",
+            datafile_id)
+        return False
+    expected_state = DataCertLock.DATAFILE_PROCESSING
+    if lock.state != expected_state:
+        logger.debug(
+            "nifcert.tasks.assert_lock_datafile_metadata_saved() "
+            "lock.state for DataFile[%d] is %s, not expected %s",
+            datafile_id, DataCertLock.state_to_string(lock.state),
+            DataCertLock.state_to_string(expected_state))
+        return False
+    lock.set_state(DataCertLock.DATAFILE_METADATA_SAVED)
+    lock.save()
+    lock_state_asserted = True
+    return lock_state_asserted
+
+
+def assert_lock_dataset_processing(datafile_id):
+    """Try to acquire exclusive ownership of the NIFCert
+    DatafileCertificationLock state that indicates the task that holds it is
+    scanning the DatafileParametersets for this DataFile and its siblings in
+    the same Dataset, then adding NIFCert metadata to the Dataset's
+    DatasetParameterSet.
+
+    This function wraps its database accesses in a transaction.  The
+    caller is not required to do so.
+
+    The lock state acquired by this function should be advanced to
+    DATASET_METADATA_SAVED by the caller after the NIFCert metadata
+    has been saved.
+
+    The caller is responsible for explicitly managing the lock state acquired
+    by this function.
+
+    Parameters
+    ----------
+    datafile_id: id of the DataFile being processed
+
+    Returns
+    -------
+    True if the required lock state was acquired, otherwise False.
+
+    """ 
+    lock_state_asserted = False
+    try:
+        with transaction.atomic():
+            from nifcert.models import DatafileCertificationLock \
+                as DataCertLock
+            lock_rows = DataCertLock.objects.filter(datafile=datafile_id)
+            num_lock_rows = len(lock_rows)
+            if num_lock_rows != 1:
+                logger.error(
+                    "nifcert.tasks.assert_lock_dataset_processing() lock query "
+                    "for DataFile[%d] returned %d matches, not, 1",
+                    datafile_id, num_lock_rows)
+                return False
+            lock = lock_rows.first()
+            if lock is None: # first() shouldn't fail, but just in case...
+                logger.error(
+                    "nifcert.tasks.assert_lock_dataset_processing() found 1 "
+                    "match but couldn't fetch DataFile[%d] lock", datafile_id)
+                return False
+            expected_state = DataCertLock.DATAFILE_METADATA_SAVED
+            if lock.state != expected_state:
+                logger.debug(
+                    "nifcert.tasks.assert_lock_dataset_processing() "
+                    "lock.state for DataFile[%d] is %s, not expected %s",
+                    datafile_id, DataCertLock.state_to_string(lock.state),
+                    DataCertLock.state_to_string(expected_state))
+                return False
+            lock.set_state(DataCertLock.DATASET_PROCESSING)
+            lock.save()
+            lock_state_asserted = True
+    except DatabaseError, e:
+        logger.error(
+            "nifcert.tasks.assert_lock_dataset_processing() "
+            "DataCertLock handling for DataFile[%d] returned a "
+            "DatabaseError:  %s", datafile_id, e)
+        return False
+    return lock_state_asserted
+
+
+def assert_lock_dataset_metadata_saved(datafile_id):
+    """Try to acquire exclusive ownership of the NIFCert
+    DatafileCertificationLock state that indicates the task that holds it has
+    finished scanning the DatafileParametersets for this DataFile and its
+    siblings in the same Dataset, then adding NIFCert metadata to the
+    Dataset's DatasetParameterSet.
+
+    This function does not wrap its database accesses in a transaction or
+    "try" statement.  The caller should include invoke this function in the
+    same "try" / transaction that updates the NIFCert Dataset metadata.
+
+    The caller is responsible for explicitly managing the lock state acquired
+    by this function.
+
+    Parameters
+    ----------
+    datafile_id: id of the DataFile being processed
+
+    Returns
+    -------
+    True if the required lock state was acquired, otherwise False.
+
+    """ 
+    lock_state_asserted = False
+    from nifcert.models import DatafileCertificationLock as DataCertLock
+    lock_rows = DataCertLock.objects.filter(datafile=datafile_id)
+    num_lock_rows = len(lock_rows)
+    if num_lock_rows != 1:
+        logger.error(
+            "nifcert.tasks.assert_lock_dataset_metadata_saved() "
+            "lock query for DataFile[%d] returned %d matches, not, 1",
+            datafile_id, num_lock_rows)
+        return False
+    lock = lock_rows.first()
+    if lock is None: # first() shouldn't fail, but just in case...
+        logger.error(
+            "nifcert.tasks.assert_lock_dataset_metadata_saved() "
+            "found 1 match but couldn't fetch DataFile[%d] lock",
+            datafile_id)
+        return False
+    expected_state = DataCertLock.DATASET_PROCESSING
+    if lock.state != expected_state:
+        logger.debug(
+            "nifcert.tasks.assert_lock_dataset_metadata_saved() "
+            "lock.state for DataFile[%d] is %s, not expected %s",
+            datafile_id, DataCertLock.state_to_string(lock.state),
+            DataCertLock.state_to_string(expected_state))
+        return False
+    lock.set_state(DataCertLock.DATASET_METADATA_SAVED)
+    lock.save()
+    return True
 
 
 def save_datafile_parameters(schema_id, param_set, params):
@@ -247,8 +442,8 @@ def get_dataset_metadata(dataset_id):
     valid = num_bruker_files == 1
     if valid:
         cert_file_id = bruker_files.first().id
-    logger.info("nifcert.get_dataset_metadata %d Bruker files in dataset",
-                num_bruker_files)
+    logger.debug("nifcert.get_dataset_metadata %d Bruker files in dataset",
+                 num_bruker_files)
 
     # Exactly one DataFile in the Dataset must have NIFCert=yes metadata
     import nifcert.schemas.datafile.nifcert as ndfs
@@ -261,17 +456,17 @@ def get_dataset_metadata(dataset_id):
             name__schema__name__exact=ndfs.SCHEMA_NAME,
             parameterset__datafile__dataset__id=dataset_id)
         num_cert_file_params = len(cert_file_params)
-        logger.info("nifcert.get_dataset_metadata %d datafile nifcert=yes "
-                    "params matched", num_cert_file_params)
+        logger.debug("nifcert.get_dataset_metadata %d datafile nifcert=yes "
+                     "params matched", num_cert_file_params)
 
         # The NIFCert=yes DataFile must be the one Bruker BioSpec file found
         if num_cert_file_params == 1:
             cert_params_file_id = (
                 cert_file_params.first().parameterset.datafile.id)
             valid = cert_file_id == cert_params_file_id
-            logger.info("nifcert.get_dataset_metadata "
-                        "Datafile[%d] NIFCert, Datafile[%d] NIFCert=yes param",
-                        cert_file_id, cert_params_file_id)
+            logger.debug("nifcert.get_dataset_metadata "
+                         "Datafile[%d] NIFCert, Datafile[%d] NIFCert=yes param",
+                         cert_file_id, cert_params_file_id)
         else:
             valid = False
 
@@ -285,8 +480,8 @@ def get_dataset_metadata(dataset_id):
         nif_meta[ndss.CERTIFIED_NAME] = value
         meta[ndss.SCHEMA_NAMESPACE] = nif_meta
 
-    logger.info("nifcert.get_dataset_metadata Dataset[%d] %s=%s",
-                dataset_id, ndss.CERTIFIED_NAME, value)
+    logger.debug("nifcert.get_dataset_metadata Dataset[%d] %s=%s",
+                 dataset_id, ndss.CERTIFIED_NAME, value)
     return meta
 
 
@@ -473,14 +668,20 @@ def set_dataset_metadata(dataset_id, metadata, replace_metadata):
     return num_added
 
 
-@task(name="nifcert.update_datafile_status", ignore_result=True)
-def update_datafile_status(get_metadata_func, datafile_id,
+@task(name="nifcert.update_datafile_status", bind=True, ignore_result=True)
+def update_datafile_status(self,
+                           get_metadata_func,
+                           datafile_id,
                            check_nifcert_instrument=True,
                            replace_file_metadata=True,
                            **kwargs):
-    """
-    Extract metadata from a DataFile using a function provided as a
+    """Extract metadata from a DataFile using a function provided as a
     parameter and save the outputs as DatafileParameters.
+
+    Note: the task decorator parameter list above uses both bind=True
+    and ignore_result=True in case someone forgets to use an immutable
+    signature (.si) when scheduling this task.  Do this in case a Celery
+    result backend is not available / configured / desirable.
 
     Parameters
     ----------
@@ -518,61 +719,91 @@ def update_datafile_status(get_metadata_func, datafile_id,
 
     """
     from nifcert import metadata
-    logger.info("nifcert.update_datafile_status DataFile[%d]", datafile_id)
+    logger.debug("nifcert.update_datafile_status begin DataFile[%d]",
+                 datafile_id)
 
-    if check_nifcert_instrument:
+    # TODO: refactor function so that return False => terminate task chain
+    # (once in stead of multiple occurrentces).  Use same code block to set
+    # DataCertLock.state to FAILED.
+
+    if check_nifcert_instrument: # checked by metadata_filter, but re-check
         if not metadata.is_datafile_instrument_nifcert(datafile_id):
             logger.debug("nifcert.update_datafile_status DataFile[%d] is not "
                          "associated with a " "NIF_certification_enabled "
                          "instrument", datafile_id)
+            self.request.callbacks = None # terminate task chain
             return
 
     datafile_matches = DataFile.objects.filter(id=datafile_id)
     num_matches = len(datafile_matches)
-    if num_matches != 1:
-        logger.debug("nifcert.update_datafile_status couldn't fetch unique "
+    if num_matches != 1:        # shouldn't happen, but just in case
+        logger.error("nifcert.update_datafile_status couldn't fetch unique "
                      "DataFile[%d], found %d matches",
                      datafile_id, num_datafiles)
+        assert_lock_datafile_failed(datafile_id)
+        self.request.callbacks = None # terminate task chain
         return
     datafile = datafile_matches.first()
     if datafile is None:
-        logger.debug("nifcert.update_datafile_status found %d matches but "
-                     "couldn't fetch DataFile[%d]", num_datafiles, datafile_id)
+        logger.error("nifcert.update_datafile_status found 1 match but "
+                     "couldn't fetch DataFile[%d]", datafile_id)
+        assert_lock_datafile_failed(datafile_id)
+        self.request.callbacks = None # terminate task chain
+        return
 
     meta = None
-    logger.debug("nifcert.update_datafile_status locking DataFile[%d]",
-                 datafile_id)
-    if acquire_datafile_lock(datafile_id):
-        logger.debug("nifcert.update_datafile_status locked DataFile[%d]",
-                     datafile_id)
+    terminate_task_chain = True
+    logger.debug("nifcert.update_datafile_status asserting lock "
+                 "DATAFILE_PROCESSING for DataFile[%d]", datafile_id)
 
+    if not assert_lock_datafile_processing(datafile_id):
+        logger.error("nifcert.update_datafile_status didn't acquire lock "
+                     "DATAFILE_PROCESSING for DataFile[%d], skipping metadata",
+                     datafile_id)
+    else:
+        logger.debug("nifcert.update_datafile_status asserted lock "
+                     "DATAFILE_PROCESSING for DataFile[%d]", datafile_id)
         try:
             with transaction.atomic():
-                meta = get_datafile_metadata(datafile, get_metadata_func,
-                                             kwargs)
+                meta = (
+                    get_datafile_metadata(datafile, get_metadata_func, kwargs))
                 # All files from a NIFCert instrument get NIFCert metadata
                 if meta == None or len(meta) == 0:
                     meta = metadata.get_not_nifcert_metadata_value()
+                metadata_saved = False
                 if meta:
-                    set_datafile_metadata(datafile, meta, replace_file_metadata)
-                    logger.debug("nifcert.update_datafile_status updated "
-                                 "metadata for DataFile[%d]", datafile_id)
+                    metadata_saved = (
+                        set_datafile_metadata(
+                            datafile, meta, replace_file_metadata))
+                logger.debug("nifcert.update_datafile_status %s metadata for "
+                             "DataFile[%d]",
+                             "saved" if metadata_saved else "didn't save",
+                             datafile_id)
+                if metadata_saved:
+                    if assert_lock_datafile_metadata_saved(datafile_id):
+                        terminate_task_chain = False
+                        logger.debug("nifcert.update_datafile_status asserted "
+                                     "lock DATAFILE_METADATA_SAVED for "
+                                     "DataFile[%d]", datafile_id)
         except Exception, e:
             logger.warning("nifcert.update_datafile_status Exception caught "
                            "whilst processing DataFile[%d]:\n  exception='%s'",
                            datafile_id, e)
-            # Propagate important exceptions like Celery's retry() / Retry()
+            assert_lock_datafile_failed_instance(datafile_id)
+            # Propagate important exceptions like Celery.exceptions.Retry
             raise
-        finally:
-            release_datafile_lock(datafile_id)
-    else:
-        logger.debug("nifcert.update_datafile_status didn't acquire "
-                     "DataFile[%d] lock, skipping Dataset update", datafile_id)
+
+    if terminate_task_chain:
+        logger.error("nifcert.update_datafile_status error saving NIFCert "
+                     "metadata for DataFile[%d], asserting FAILED lock and "
+                     "terminating NIFCert metadata task chain", datafile_id)
+        assert_lock_datafile_failed_instance(datafile_id)
+        self.request.callbacks = None # terminate task chain
         return
 
-    if meta == None:
-        logger.debug("nifcert.update_datafile_status no metadata to save for "
-                     "DataFile[%d]", datafile_id)
+    logger.debug("nifcert.update_datafile_status saved NIFCert metadata for "
+                 "DataFile[%d] and asserted DATAFILE_METADATA_SAVED lock",
+                 datafile_id)
 
 
 @task(name="nifcert.update_dataset_status", ignore_result=True)
@@ -593,9 +824,9 @@ def update_dataset_status(dataset_id,
     Parameters
     ----------
     dataset_id: tardis.tardis_portal.models.Dataset.id
-        Database id of the Dataset instance to process.
+        Database id of the Dataset to process.
     datafile_id: tardis.tardis_portal.models.DataFile.id
-        Database id of the DataFile instance to process.
+        Database id of the DataFile to process.
     check_nifcert_instrument: boolean (default: True)
         If False, don't check whether the Dataset came from an Instrument
         with NIF_certification_enabled=yes and always add NIFCert metadata.
@@ -619,54 +850,56 @@ def update_dataset_status(dataset_id,
     None
 
     """
-    logger.info("nifcert.update_dataset_status Dataset[%d] DataFile[%d]",
-                dataset_id, datafile_id)
+    logger.debug("nifcert.update_dataset_status begin Dataset[%d] DataFile[%d]",
+                 dataset_id, datafile_id)
 
     if check_nifcert_instrument:
         from nifcert import metadata
         if not metadata.is_datafile_instrument_nifcert(datafile_id):
-            logger.debug("nifcert.update_dataset_status Dataset[%d] is not "
-                         "associated with a NIF_certification_enabled "
-                         "instrument", dataset_id)
+            logger.debug("nifcert.update_dataset_status Dataset[%d] "
+                         "DataFile[%d] is not associated with a "
+                         "NIF_certification_enabled instrument", dataset_id)
             return
 
-    # If the update was triggered by a new DataFile, include its id in
-    # the Celery identifier used to lock the Dataset (along with the
-    # Dataset id).  This protects against multiple concurrent
-    # instances of this task for the same DataFile+Dataset, but allows
-    # concurrent instances for different DataFiles in the same
-    # Dataset.  Separate Django database transactions and locking are
-    # used so the database enforces race-free sequential execution of
-    # simultaneous tasks for different Datafiles from the same Dataset
-    # (rather than race-prone parallel).  We don't assume a Celery
-    # result backend is available.
+    # Ensure only one instance of the task for updating this DataFile's
+    # Dataset is ever run.
 
-    if datafile_id == -1:
-        lock_id = "{:d}".format(dataset_id, datafile_id)
+    metadata_saved = False
+    logger.debug("nifcert.update_dataset_status asserting lock "
+                 "DATASET_PROCESSING for Dataset[%d] DataFile[%d]",
+                 dataset_id, datafile_id)
+
+    if not assert_lock_dataset_processing(datafile_id):
+        logger.error("nifcert.update_dataset_status didn't acquire lock "
+                     "DATASET_PROCESSING for Dataset[%d] DataFile[%d], "
+                     "skipping metadata", dataset_id, datafile_id)
     else:
-        lock_id = "{:d}-{:d}".format(dataset_id, datafile_id)
-    logger.info("nifcert.update_dataset_status locking Dataset[%d]",
-                dataset_id)
-    if acquire_dataset_lock(lock_id):
-        logger.debug("nifcert.update_dataset_status locked Dataset[%d]",
-                     dataset_id)
+        logger.debug("nifcert.update_dataset_status asserted lock "
+                     "DATASET_PROCESSING for Dataset[%d] DataFile[%d]",
+                     dataset_id, datafile_id)
         try:
             with transaction.atomic():
                 meta = get_dataset_metadata(dataset_id)
-                if not meta:
-                    # TODO: allow NIF Certified status to be deleted?
-                    return
-                set_dataset_metadata(dataset_id, meta, replace_dataset_metadata)
-
-            logger.info("nifcert.update_dataset_status finished Dataset[%d]",
-                        dataset_id)
-
+                if meta:
+                    n = set_dataset_metadata(dataset_id, meta,
+                                             replace_dataset_metadata)
+                    if n > 0:
+                        if assert_lock_dataset_metadata_saved(datafile_id):
+                            metadata_saved = True
         except Exception, e:
             logger.warning("nifcert.update_dataset_status Exception caught "
-                           "whilst processing Dataset:\n  '%s'", e)
-            # Propagate important exceptions like Celery's retry() / Retry()
+                           "whilst processing Dataset[%d] DataFile[%d]:\n  "
+                           "exception='%s'", dataset_id, datafile_id, e)
+            assert_lock_datafile_failed(datafile_id)
+            # Propagate important exceptions like Celery.exceptions.Retry
             raise
-        finally:
-            release_dataset_lock(lock_id)
-            logger.debug("nifcert.update_dataset_status unlocked Dataset[%d]",
-                         dataset_id)
+
+    if not metadata_saved:
+        logger.debug("nifcert.update_dataset_status error saving NIFCert "
+                     "metadata for Dataset[%d] DataFile[%d], asserting FAILED "
+                     "lock", dataset_id, datafile_id)
+        assert_lock_datafile_failed(datafile_id)
+
+    logger.debug("nifcert.update_dataset_status saved NIFCert metadata for "
+                 "Dataset[%d] DataFile[%d] and asserted DATASET_METADATA_SAVED "
+                 "lock", dataset_id, datafile_id)

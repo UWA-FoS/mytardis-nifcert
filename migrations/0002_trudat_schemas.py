@@ -266,7 +266,7 @@ class Migration(migrations.Migration):
     dependencies = [
         # The mytardis_portal app must create its Schema and
         # ParameterSet Models before this app can add data to them.
-        ('tardis_portal', '0001_initial'),
+        ('tardis_portal', '0011_auto_20160505_1643'),
     ]
 
     operations = [
