@@ -8,7 +8,7 @@ from .. shared import app_schema
 # Details about this schema
 #
 SCHEMA_NAME =         "TruDat DataFile DICOM Statistics"
-SCHEMA_VERSION_MAJOR = 0
+SCHEMA_VERSION_MAJOR = 1
 SCHEMA_VERSION_MINOR = 0
 SCHEMA_VERSION =       "{0}.{1}".format(SCHEMA_VERSION_MAJOR,
                                         SCHEMA_VERSION_MINOR)
