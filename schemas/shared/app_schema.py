@@ -21,6 +21,7 @@ NAMESPACE_SUBTREE_DATAFILE =            "datafile"
 
 NAMESPACE_SUBTREE_NIFCERT =             "nifcert"
 NAMESPACE_SUBTREE_DICOM_STATISTICS =    "dicom-statistics"
+NAMESPACE_SUBTREE_TRUSTED_DATA_REPO =   "trusted-data-repo"
 
 ##############################################################################
 

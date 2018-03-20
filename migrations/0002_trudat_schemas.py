@@ -18,7 +18,7 @@ from tardis.tardis_portal.models import ParameterName
 logger = logging.getLogger(__name__)
 
 
-def create_instrument_metadata_schema():
+def create_instrument_nifcert_metadata_schema():
     """
     Create any Instrument Schema(s) and ParameterName(s) required by
     this app.
@@ -28,7 +28,8 @@ def create_instrument_metadata_schema():
         import nifcert.schemas.instrument.nifcert as ni_info
 
         stage = "creating NIFCert Instrument metadata Schema"
-        logger.debug("nifcert.create_instrument_metadata_schema: %s", stage)
+        logger.debug(
+            "nifcert.create_instrument_nifcert_metadata_schema: %s", stage)
         instr_schema = (
             Schema(
                 namespace=ni_info.SCHEMA_NAMESPACE,
@@ -40,7 +41,8 @@ def create_instrument_metadata_schema():
 
         stage_fmt = 'creating NIFCert Instrument metadata parameter="{}"'
         stage = stage_fmt.format(ni_info.CERTIFICATION_ENABLED_NAME)
-        logger.debug("nifcert.create_instrument_metadata_schema: %s", stage)
+        logger.debug(
+            "nifcert.create_instrument_nifcert_metadata_schema: %s", stage)
         param = (
             ParameterName(
                 schema=instr_schema,
@@ -55,10 +57,72 @@ def create_instrument_metadata_schema():
         param.save()
 
         stage = "finalised"
-        logger.debug("nifcert.create_instrument_metadata_schema: %s", stage)
+        logger.debug(
+            "nifcert.create_instrument_nifcert_metadata_schema: %s", stage)
 
     except Exception, e:
-        logger.error("nifcert.create_instrument_metadata_schema: "
+        logger.error("nifcert.create_instrument_nifcert_metadata_schema: "
+                     "exception at stage: %s:\n %s", stage, e)
+
+
+def create_instrument_tdr_metadata_schema():
+    """
+    Create any Instrument Trusted Data Repository (TDR Schema(s) and
+    ParameterName(s) required by this app or its users.
+
+    """
+    stage = "initialising"
+    try:
+        import nifcert.schemas.instrument.tdr as ti_info
+
+        stage = "creating NIFCert Instrument TDR metadata Schema"
+        logger.debug("nifcert.create_instrument_tdr_metadata_schema: %s", stage)
+        instr_schema = (
+            Schema(
+                namespace=ti_info.SCHEMA_NAMESPACE,
+                name=ti_info.SCHEMA_NAME,
+                type=Schema.INSTRUMENT,
+                immutable=True,
+                hidden=False))
+        instr_schema.save()
+
+        stage_fmt = 'creating NIFCert Instrument TDR metadata parameter="{}"'
+        stage = stage_fmt.format(ti_info.QC_PROJECT_NAME)
+        logger.debug("nifcert.create_instrument_tdr_metadata_schema: %s", stage)
+        param = (
+            ParameterName(
+                schema=instr_schema,
+                name=ti_info.QC_PROJECT_NAME,
+                full_name=ti_info.QC_PROJECT_LABEL,
+                data_type=ti_info.QC_PROJECT_TYPE,
+                immutable=True,
+                comparison_type=ParameterName.EXACT_VALUE_COMPARISON,
+                is_searchable=True,
+                choices="",
+                order=9999))
+        param.save()
+
+        stage_fmt = 'creating NIFCert Instrument TDR metadata parameter="{}"'
+        stage = stage_fmt.format(ti_info.RDA_SERVICE_RECORD_NAME)
+        logger.debug("nifcert.create_instrument_tdr_metadata_schema: %s", stage)
+        param = (
+            ParameterName(
+                schema=instr_schema,
+                name=ti_info.RDA_SERVICE_RECORD_NAME,
+                full_name=ti_info.RDA_SERVICE_RECORD_LABEL,
+                data_type=ti_info.RDA_SERVICE_RECORD_TYPE,
+                immutable=True,
+                comparison_type=ParameterName.EXACT_VALUE_COMPARISON,
+                is_searchable=True,
+                choices="",
+                order=9999))
+        param.save()
+
+        stage = "finalised"
+        logger.debug("nifcert.create_instrument_tdr_metadata_schema: %s", stage)
+
+    except Exception, e:
+        logger.error("nifcert.create_instrument_tdr_metadata_schema: "
                      "exception at stage: %s:\n %s", stage, e)
 
 
@@ -255,7 +319,8 @@ def create_app_metadata_schema(apps_registry, schema_editor):
     """
     Create any Schema(s) and ParameterName(s) required by this app.
     """
-    create_instrument_metadata_schema()
+    create_instrument_nifcert_metadata_schema()
+    create_instrument_tdr_metadata_schema()
     create_dataset_metadata_schema()
     create_datafile_nifcert_metadata_schema()
     create_datafile_dicom_statistics_metadata_schema()
